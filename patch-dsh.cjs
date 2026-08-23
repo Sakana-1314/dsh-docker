@@ -314,10 +314,13 @@ function hideOnMobile(pkg, classKeys) {
 }
 
 // Apply one exact-string replacement list to a file's source, once-only and
-// idempotent: each `from` must occur exactly once unless the patch is already
-// in place. Every `to` contains its `from` verbatim (the anchor is a prefix of
-// the patched text), so seeing the full `to` means this entry ran before --
-// skip even though `from` itself still occurs once inside it.
+// idempotent: each `from` must occur exactly once (or, with the third element
+// set, at least once) unless the patch is already in place. For code targets
+// every `to` contains its `from` verbatim (the anchor is a prefix of the
+// patched text), so seeing the full `to` means this entry ran before -- skip
+// even though `from` itself still occurs once inside it. The preset-translation
+// pairs below do NOT nest them; there the includes(to) skip alone is what
+// makes a re-run idempotent.
 function applyReplacements(display, src, replacements) {
   // An entry may carry a third element (truthy) to replace EVERY occurrence
   // of `from` instead of requiring exactly one -- for prose upstream
@@ -362,14 +365,13 @@ for (const { pkg, replacements, custom, file } of targets) {
 // dsh ships four agent presets (the four "modes" a session can run under) whose
 // model-facing prompt prose is authored in English: each preset's persona
 // (`text`), the plan-mode rules (`section`) where present, and `minimal`'s
-// persistent-bash tool description. The shipped presets are read at RUNTIME
+// persistent shell tool descriptions (bash and pwsh). The shipped presets are
+// read at RUNTIME
 // from apps/cli/config/agent-presets/ (beside the compiled profile-boot), so
 // rewriting these YAML files at build time translates every session mounted on
 // them — giving the model a Chinese system prompt so it tends to think and
 // answer in Chinese. Placeholders like {{model}} / {{cwd}} are kept verbatim;
 // paragraph-wise replacement preserves the YAML block-scalar shape exactly.
-// Unlike the code targets above, these pairs do NOT nest `from` inside `to` —
-// the includes(to) skip in applyReplacements is what makes them idempotent.
 
 // Plan-mode rules: identical section in the standard / code / cordis presets.
 const PLAN_MODE_PARAGRAPHS = [
