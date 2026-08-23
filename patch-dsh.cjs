@@ -319,19 +319,22 @@ function hideOnMobile(pkg, classKeys) {
 // the patched text), so seeing the full `to` means this entry ran before --
 // skip even though `from` itself still occurs once inside it.
 function applyReplacements(display, src, replacements) {
-  for (const [from, to] of replacements) {
+  // An entry may carry a third element (truthy) to replace EVERY occurrence
+  // of `from` instead of requiring exactly one -- for prose upstream
+  // duplicates across sibling tools (e.g. minimal preset's bash descriptions).
+  for (const [from, to, all] of replacements) {
     if (src.includes(to)) {
       console.log(`patch-dsh: already applied in ${display}: ${from.slice(0, 60)}...`)
       continue
     }
     const count = src.split(from).length - 1
-    if (count !== 1) {
+    if ((all && count === 0) || (!all && count !== 1)) {
       console.error(
         `patch-dsh: expected exactly one occurrence (found ${count}) in ${display}:\n  ${from}`,
       )
       process.exit(1)
     }
-    src = src.replace(from, to)
+    src = all ? src.split(from).join(to) : src.replace(from, to)
   }
   return src
 }
@@ -437,32 +440,54 @@ const MINIMAL_PERSONA = [
 ]
 
 // minimal's persistent-bash tool description (literal block, line-wise).
+// Every pair replaces ALL occurrences: since dsh 0.1.1 the preset ships two
+// bash tool descriptions sharing some of these lines, and a sibling sentence
+// translated wherever it appears is exactly what we want.
 const MINIMAL_BASH_DESCRIPTION_LINES = [
-  ['Run commands in a bash shell', '在 bash shell 中执行命令'],
+  // The pwsh sibling description shares some of these lines verbatim and adds
+  // its own; translate those too so no English prompt prose survives.
+  ['Run commands in a PowerShell shell', '在 PowerShell shell 中执行命令', true],
+  [
+    '* Use native Windows paths (C:\\...) and $env:NAME variables; this is PowerShell, not bash.',
+    '* 使用原生 Windows 路径（C:\\...）和 $env:NAME 变量；这是 PowerShell，而不是 bash。',
+    true,
+  ],
+  [
+    "* Please run long lived commands in the background, e.g. 'Start-Job' or start a server with Start-Process.",
+    "* 请将长时间运行的命令放到后台执行，例如 'Start-Job'，或用 Start-Process 启动服务器。",
+    true,
+  ],
+  ['Run commands in a bash shell', '在 bash shell 中执行命令', true],
   [
     '* When invoking this tool, the contents of the "command" parameter does NOT need to be XML-escaped.',
     '* 调用此工具时，command 参数的内容无需做 XML 转义。',
+    true,
   ],
-  ["* You don't have access to the internet via this tool.", '* 通过此工具无法访问互联网。'],
+  ["* You don't have access to the internet via this tool.", '* 通过此工具无法访问互联网。', true],
   [
     '* You do have access to a mirror of common linux and python packages via apt and pip.',
     '* 可以通过 apt 和 pip 使用常用 Linux 与 Python 软件包的镜像源。',
+    true,
   ],
   [
     '* State is persistent across command calls and discussions with the user.',
     '* 状态在各次命令调用之间以及与用户的整个讨论过程中是持久的。',
+    true,
   ],
   [
     "* To inspect a particular line range of a file, e.g. lines 10-25, try 'sed -n 10,25p /path/to/the/file'.",
     "* 要查看文件的特定行区间（例如第 10-25 行），可以使用 'sed -n 10,25p /文件路径'。",
+    true,
   ],
   [
     '* Please avoid commands that may produce a very large amount of output.',
     '* 请避免可能产生极大量输出的命令。',
+    true,
   ],
   [
     "* Please run long lived commands in the background, e.g. 'sleep 10 &' or start a server in the background.",
     "* 请将长时间运行的命令放到后台执行，例如 'sleep 10 &'，或将服务器在后台启动。",
+    true,
   ],
 ]
 

@@ -57,6 +57,13 @@ docker build --build-arg DSH_REF=dsh-v0.1.0-rc.7 -t deepseek-harness:local .
 | `DSH_PORT` | 监听端口 | `3080` |
 | `DSH_DEFAULT_DIRECTORY` | 默认工作目录 | `/workspace`（容器当前目录） |
 | `DSH_RETRY` | 请求失败重试次数 | `30` |
+| `DSH_RETRY_INITIAL_DELAY_MS` | 重试退避初始延迟（毫秒） | `500` |
+| `DSH_RETRY_MAX_DELAY_MS` | 重试退避上限（毫秒） | `10000` |
+| `DSH_RETRY_JITTER_RATIO` | 重试退避抖动比例（0–1） | `0.1` |
+| `DSH_RETRYABLE_CODES` | 追加可重试的错误码（逗号分隔），如 `PI_AI_ERROR,HTTP_408`。网关的自定义报错文案若被归入不可重试的兜底错误码，加进来即可参与同一套退避重试 | 无 |
+| `DSH_STREAM_IDLE_TIMEOUT_MS` | 模型流式空闲超时（毫秒）：流多久没有新数据就中断本次请求。慢网关 / 深度思考期间无 keepalive 帧的模型可调大 | `300000`（5 分钟） |
+| `DSH_SSE_REQUIRE_DONE` | 设为 `0` 容忍网关省略 SSE `[DONE]` 结束帧（详见下文「其他构建时增强」） | 严格 |
+| `DSH_TOKEN_METER_CHARS_PER_TOKEN` | Token 估算字符密度（详见下文「其他构建时增强」） | `4` |
 | `UA` | 覆盖请求模型供应商的 User-Agent | `deepseek-harness/<版本> (+url)` |
 | `DSH_HOST` | `0.0.0.0` 或 `127.0.0.1`（仅本机） | `0.0.0.0` |
 | `DSH_TRUSTED_HOSTS` | 信任的访问地址（空格/逗号分隔）：局域网 IP、域名、反向代理地址。`/api` 与插件路由（`/sidebar/*`）都会放行 | 无（容器自身的局域网 IP 自动受信） |
