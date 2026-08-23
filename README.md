@@ -72,3 +72,18 @@ docker build --build-arg DSH_REF=dsh-v0.1.0-rc.7 -t deepseek-harness:local .
 
 该增强通过 `patch-dsh.cjs` 在构建时注入 dsh 的 LLM 核心与 pi-ai 适配器，无需额外配置。
 
+### 四种内置智能体模式的提示词已翻译为中文
+
+镜像构建时会把 dsh 自带的四种智能体预设（`code` / `cordis` / `minimal` / `standard`）里面向模型的英文提示词替换为中文，包括：
+
+- 各预设的角色设定（persona），并额外追加一句「除非用户明确要求其他语言，全程使用中文思考和回复」；
+- 计划模式（plan mode）的规则段落（`standard` / `code` / `cordis` 三个预设）；
+- `minimal` 预设中持久化 bash 工具的描述。
+
+这样基于这些预设运行的会话拿到的是中文系统提示词，模型会更倾向用中文思考与回复。`{{model}}` / `{{cwd}}` 等占位符保持原样，YAML 结构逐段保留；补丁幂等，可重复执行。该翻译同样通过 `patch-dsh.cjs` 在构建时完成，无需额外配置。
+
+### 其他构建时增强
+
+- **SSE `[DONE]` 容错**：部分 OpenAI 兼容网关代理的非 OpenAI 后端会在没有字面 `[DONE]` 帧的情况下干净地结束流式响应，上游会将其判定为 `STREAM_CLOSED` 终态错误；设置 `DSH_SSE_REQUIRE_DONE=0` 可关闭上游严格校验（默认保持严格）。
+- **Token 估算密度可配**：上游把 token 估算硬编码为 4 字符/token；代码密集或中文对话、非 DeepSeek 模型在该密度下误差很大。设置 `DSH_TOKEN_METER_CHARS_PER_TOKEN` 可调整（调大则自动压缩更晚触发，调小则更早）。
+
