@@ -85,7 +85,7 @@ docker build --build-arg DSH_REF=dsh-v0.1.0-rc.7 -t deepseek-harness:local .
 
 - 各预设的角色设定（persona），并额外追加一句「除非用户明确要求其他语言，全程使用中文思考和回复」；
 - 计划模式（plan mode）的规则段落（`standard` / `code` / `cordis` 三个预设）；
-- `minimal` 预设中持久化 bash 工具的描述。
+- `minimal` 预设中持久化 shell 工具（bash / pwsh）的描述。
 
 这样基于这些预设运行的会话拿到的是中文系统提示词，模型会更倾向用中文思考与回复。`{{model}}` / `{{cwd}}` 等占位符保持原样，YAML 结构逐段保留；补丁幂等，可重复执行。该翻译同样通过 `patch-dsh.cjs` 在构建时完成，无需额外配置。
 
