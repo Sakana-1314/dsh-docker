@@ -89,6 +89,10 @@ docker build --build-arg DSH_REF=dsh-v0.1.0-rc.7 -t deepseek-harness:local .
 
 这样基于这些预设运行的会话拿到的是中文系统提示词，模型会更倾向用中文思考与回复。`{{model}}` / `{{cwd}}` 等占位符保持原样，YAML 结构逐段保留；补丁幂等，可重复执行。该翻译同样通过 `patch-dsh.cjs` 在构建时完成，无需额外配置。
 
+### `/auto-plan` 命令：计划退出自动批准
+
+镜像通过 `patch-dsh.cjs` 为 `dsh-plan-mode` 注入 `/auto-plan` 命令：与 `/plan` 一样进入计划模式（`plan:policy` 引导、模型探索并制定计划），但当模型调用 `exit_plan_mode` 时**跳过用户评审确认卡片直接批准**，退出计划模式并继续执行计划——省去一次手动确认。`/auto-plan off` 与 `/plan off` 均可退出；auto 标记由会话日志折叠（`command/run` 记录），重启 / fork 后可恢复。普通 `/plan` 的行为完全不变（仍弹评审确认），在已激活计划会话中用 `/auto-plan` 或 `/plan` 可在两种模式间切换。该增强同样通过 `patch-dsh.cjs` 在构建时完成，无需额外配置。
+
 ### 其他构建时增强
 
 - **SSE `[DONE]` 容错**：部分 OpenAI 兼容网关代理的非 OpenAI 后端会在没有字面 `[DONE]` 帧的情况下干净地结束流式响应，上游会将其判定为 `STREAM_CLOSED` 终态错误；设置 `DSH_SSE_REQUIRE_DONE=0` 可关闭上游严格校验（默认保持严格）。

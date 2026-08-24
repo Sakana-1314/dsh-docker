@@ -249,6 +249,35 @@ const targets = [
     ],
   },
   {
+    // /auto-plan command: enter the same plan mode as /plan but mark the
+    // session auto-approving — `exit_plan_mode` returns { approved: true }
+    // immediately instead of raising the user review question, so the plan is
+    // carried out without a confirmation step. The marker is folded from the
+    // session log (`command/run` name + `plan/mode` active flips), so resume
+    // and fork restore it with no live mirror, and it never touches
+    // plan/mode's payload or the projection wire (the `plan` projection still
+    // reports {active, pending}).
+    // Anchors target the compiled lib/index.js of dsh-v0.1.1-rc.2.
+    pkg: '@deepseek-ai/dsh-plan-mode',
+    replacements: [
+      // foldAutoPlan helper, injected after foldPlanMode (before the schemas).
+      [
+        '\treturn active;\n}\nconst planUnitStateSchema = z.object({',
+        '\treturn active;\n}\n/**\n * /auto-plan marker folded from the session log: true while the last\n * plan-family command was a successful `auto-plan` entry and no later\n * event exited plan mode or selected the reviewed `/plan` mode.\n */\nfunction foldAutoPlan(events, end = events.length) {\n\tlet auto = false;\n\tlet index = 0;\n\tfor (const event of events) {\n\t\tif (index >= end) break;\n\t\tindex++;\n\t\tif (event.type === "plan/mode") {\n\t\t\tif (event.data.active !== true) auto = false;\n\t\t} else if (event.type === "command/run") {\n\t\t\tif (event.data.name === "auto-plan") auto = (event.data.args ?? "").trim() !== "off";\n\t\t\telse if (event.data.name === "plan") auto = false;\n\t\t}\n\t}\n\treturn auto;\n}\nconst planUnitStateSchema = z.object({',
+      ],
+      // exit_plan_mode: in an auto session, approve without the user review.
+      [
+        '\t\t\t\tconst interaction = ctx.get("userQuestions");',
+        '\t\t\t\tif (foldAutoPlan(agent.session.events)) {\n\t\t\t\t\tthis.pendingIntents.set(agent.session, { active: false, narrate: false });\n\t\t\t\t\treturn { approved: true };\n\t\t\t\t}\n\t\t\t\tconst interaction = ctx.get("userQuestions");',
+      ],
+      // /auto-plan command, registered beside /plan inside the same child.
+      [
+        '\t\t\t});\n\t\t});\n\t\tctx.tools.register(defineTool({',
+        '\t\t\t});\n\t\tcommandCtx.commands.register({\n\t\t\tname: "auto-plan",\n\t\t\tdescription: "Enter or leave auto-approving plan mode",\n\t\t\tinput: {\n\t\t\t\thint: "[off|message]",\n\t\t\t\timages: true\n\t\t\t},\n\t\t\thandler: ({ agent, rawInput, attachments }) => {\n\t\t\t\tconst message = rawInput.trim();\n\t\t\t\tif (message === "off" && attachments.length > 0) return {\n\t\t\t\t\tkind: "error",\n\t\t\t\t\ttext: "Image attachments cannot accompany /auto-plan off."\n\t\t\t\t};\n\t\t\t\tif (message === "off") return this.set(agent, false) === "committed" ? {\n\t\t\t\t\tkind: "success",\n\t\t\t\t\ttext: "Plan mode off."\n\t\t\t\t} : {\n\t\t\t\t\tkind: "success",\n\t\t\t\t\ttext: "Leaving plan mode (applies from the next step)."\n\t\t\t\t};\n\t\t\t\tconst outcome = this.set(agent, true);\n\t\t\t\tif (message !== "" || attachments.length > 0) agent.steer(createUserMessage({\n\t\t\t\t\tcontent: [...attachments, ...message === "" ? [] : [{\n\t\t\t\t\t\ttype: "text",\n\t\t\t\t\t\ttext: message\n\t\t\t\t\t}]],\n\t\t\t\t\tsource: { kind: "user" }\n\t\t\t\t}));\n\t\t\t\treturn {\n\t\t\t\t\tkind: "success",\n\t\t\t\t\ttext: outcome === "committed" ? "Auto plan mode on — plans auto-approve. Use /plan off to leave." : "Entering auto plan mode — plans auto-approve (applies from the next step). Use /plan off to leave."\n\t\t\t\t};\n\t\t\t}\n\t\t});\n\t\t});\n\t\tctx.tools.register(defineTool({',
+      ],
+    ],
+  },
+  {
     // Token estimation density (upstream hardcodes 4 chars/token and accepts
     // no configuration): drives auto-compaction pressure. Code-heavy or CJK
     // conversations and non-DeepSeek models misestimate badly at 4; raise it
