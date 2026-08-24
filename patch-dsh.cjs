@@ -292,6 +292,39 @@ const targets = [
     ],
   },
   {
+    // Remote settings unlock (opt-in via DSH_DISABLE_TRUST_FENCE=1): settings
+    // RPCs and the settings UI are loopback-only by design (they carry model
+    // credentials), so a browser reached over LAN IP / domain shows
+    // "settings are unavailable in this browser". When the deployment turns
+    // the trust fence fully off (DSH_DISABLE_TRUST_FENCE=1, e.g. behind its
+    // own reverse proxy), the Host already lets every /api request through —
+    // this pair of hooks carries that switch to the browser too: the Host
+    // injects a `__DSH_TRUST_FENCE_OFF__` page global (beside __DSH_BOOT__),
+    // and the browser's isLoopback check honors it, so settings become
+    // available to remote browsers exactly when the fence is off. Default
+    // behavior (no env) is unchanged.
+    pkg: '@deepseek-ai/dsh-client-modules',
+    replacements: [
+      [
+        '\t\t{\n\t\t\tkind: "global",\n\t\t\tname: "__DSH_BOOT__",\n\t\t\tvalue: graph\n\t\t}\n\t];',
+        '\t\t{\n\t\t\tkind: "global",\n\t\t\tname: "__DSH_BOOT__",\n\t\t\tvalue: graph\n\t\t},\n\t\t{\n\t\t\tkind: "global",\n\t\t\tname: "__DSH_TRUST_FENCE_OFF__",\n\t\t\tvalue: process.env.DSH_DISABLE_TRUST_FENCE === "1"\n\t\t}\n\t];',
+      ],
+    ],
+  },
+  {
+    // Browser half of the same hook: honor the injected __DSH_TRUST_FENCE_OFF__
+    // global in the isLoopback decision, so settings persist as 'host' for a
+    // remote browser exactly when the fence is off.
+    pkg: '@deepseek-ai/dsh-client-connection',
+    file: 'lib/client.js',
+    replacements: [
+      [
+        'isLoopback: pageLocation === void 0 || isLoopbackHostname(pageLocation.hostname),',
+        'isLoopback: pageLocation === void 0 || isLoopbackHostname(pageLocation.hostname) || globalThis.__DSH_TRUST_FENCE_OFF__ === true,',
+      ],
+    ],
+  },
+  {
     // Mobile: hide the model name + thinking level in the composer's model seat
     // so the seat never overlaps the sibling read/write policy buttons in the
     // tool row on phones. The compiled client bundle inlines the CSS module as

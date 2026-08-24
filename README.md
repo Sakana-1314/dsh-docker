@@ -67,7 +67,7 @@ docker build --build-arg DSH_REF=dsh-v0.1.0-rc.7 -t deepseek-harness:local .
 | `UA` | 覆盖请求模型供应商的 User-Agent | `deepseek-harness/<版本> (+url)` |
 | `DSH_HOST` | `0.0.0.0` 或 `127.0.0.1`（仅本机） | `0.0.0.0` |
 | `DSH_TRUSTED_HOSTS` | 信任的访问地址（空格/逗号分隔）：局域网 IP、域名、反向代理地址。`/api` 与插件路由（`/sidebar/*`）都会放行 | 无（容器自身的局域网 IP 自动受信） |
-| `DSH_DISABLE_TRUST_FENCE` | 设为 `1` 彻底关闭信任栅栏，**同时作用于 `/api` 和已安装插件的路由（如 `/sidebar/*`）**；无鉴权，仅在你自己的反代 / 鉴权后使用 | 无 |
+| `DSH_DISABLE_TRUST_FENCE` | 设为 `1` 彻底关闭信任栅栏，**同时作用于 `/api` 和已安装插件的路由（如 `/sidebar/*`）**，并解锁远程浏览器访问 settings（模型 / 凭证设置页，默认仅限 `localhost` 可用，远程显示「加载提供方目录失败」）；无鉴权，仅在你自己的反代 / 鉴权后使用 | 无 |
 
 ### 任意模型 / 任意供应商都可设置思考等级（推理等级）
 
