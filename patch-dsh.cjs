@@ -292,22 +292,18 @@ const targets = [
     ],
   },
   {
-    // Remote settings unlock (opt-in via DSH_DISABLE_TRUST_FENCE=1): settings
-    // RPCs and the settings UI are loopback-only by design (they carry model
-    // credentials), so a browser reached over LAN IP / domain shows
-    // "settings are unavailable in this browser". When the deployment turns
-    // the trust fence fully off (DSH_DISABLE_TRUST_FENCE=1, e.g. behind its
-    // own reverse proxy), the Host already lets every /api request through —
-    // this pair of hooks carries that switch to the browser too: the Host
-    // injects a `__DSH_TRUST_FENCE_OFF__` page global (beside __DSH_BOOT__),
-    // and the browser's isLoopback check honors it, so settings become
-    // available to remote browsers exactly when the fence is off. Default
-    // behavior (no env) is unchanged.
+    // Host-side page globals for two deployment switches (injected beside
+    // __DSH_BOOT__ in bootInjections; one replacement stays idempotent):
+    //  - __DSH_TRUST_FENCE_OFF__: carries DSH_DISABLE_TRUST_FENCE=1 to the
+    //    browser so remote settings (model / credential page, loopback-only
+    //    by design) become available exactly when the fence is off.
+    //  - __DSH_SKIP_WELCOME_NOTICE__: skips the internal-testing welcome
+    //    popup by default; set DSH_SHOW_WELCOME_NOTICE=1 to restore it.
     pkg: '@deepseek-ai/dsh-client-modules',
     replacements: [
       [
         '\t\t{\n\t\t\tkind: "global",\n\t\t\tname: "__DSH_BOOT__",\n\t\t\tvalue: graph\n\t\t}\n\t];',
-        '\t\t{\n\t\t\tkind: "global",\n\t\t\tname: "__DSH_BOOT__",\n\t\t\tvalue: graph\n\t\t},\n\t\t{\n\t\t\tkind: "global",\n\t\t\tname: "__DSH_TRUST_FENCE_OFF__",\n\t\t\tvalue: process.env.DSH_DISABLE_TRUST_FENCE === "1"\n\t\t}\n\t];',
+        '\t\t{\n\t\t\tkind: "global",\n\t\t\tname: "__DSH_BOOT__",\n\t\t\tvalue: graph\n\t\t},\n\t\t{\n\t\t\tkind: "global",\n\t\t\tname: "__DSH_TRUST_FENCE_OFF__",\n\t\t\tvalue: process.env.DSH_DISABLE_TRUST_FENCE === "1"\n\t\t},\n\t\t{\n\t\t\tkind: "global",\n\t\t\tname: "__DSH_SKIP_WELCOME_NOTICE__",\n\t\t\tvalue: process.env.DSH_SHOW_WELCOME_NOTICE !== "1"\n\t\t}\n\t];',
       ],
     ],
   },
@@ -321,6 +317,19 @@ const targets = [
       [
         'isLoopback: pageLocation === void 0 || isLoopbackHostname(pageLocation.hostname),',
         'isLoopback: pageLocation === void 0 || isLoopbackHostname(pageLocation.hostname) || globalThis.__DSH_TRUST_FENCE_OFF__ === true,',
+      ],
+    ],
+  },
+  {
+    // Browser half of the welcome-notice switch: skip the internal-testing
+    // popup while __DSH_SKIP_WELCOME_NOTICE__ is true (default), so the GUI
+    // opens straight to the workspace instead of showing the notice modal.
+    pkg: '@deepseek-ai/dsh-client-ui-settings-models',
+    file: 'lib/client.js',
+    replacements: [
+      [
+        'if (state.status === "idle" || state.status === "loading" || state.acknowledged) return null;',
+        'if (globalThis.__DSH_SKIP_WELCOME_NOTICE__ === true) return null;\n\t\tif (state.status === "idle" || state.status === "loading" || state.acknowledged) return null;',
       ],
     ],
   },
