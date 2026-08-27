@@ -494,6 +494,35 @@ const targets = [
     // Mobile: hide the session-log download button in the session header.
     ...hideOnMobile('@deepseek-ai/dsh-session-log-export', ['sessionLogButton']),
   },
+  {
+    // Mobile: the collapsed sidebar must collapse to a top-left corner button
+    // instead of a full-height 56px rail that reserves a strip of the page.
+    // Half 1 (this entry): on narrow viewports a COLLAPSED frame must not keep
+    // the rail column -- force the grid to 0 / 1fr / 0 (!important beats the
+    // component's inline grid-template-columns) so the center column spans the
+    // whole width. The media-query breakpoint matches SIDEBAR_AUTO_COLLAPSE
+    // (1024) in dsh-client-ui-layout's columns.ts; data-sidebar-collapsed is
+    // set by AppFrame whenever the sidebar is collapsed, in every profile.
+    ...appendCssSuffix(
+      '@deepseek-ai/dsh-client-ui-layout',
+      '[data-sidebar-collapsed]{grid-template-columns:0',
+      (c) => `@media (max-width:1023px){.${c.get('frame')}[data-sidebar-collapsed]{grid-template-columns:0 minmax(0,1fr) 0 !important}}`,
+    ),
+  },
+  {
+    // Mobile: the collapsed sidebar must collapse to a top-left corner button
+    // instead of a full-height 56px rail. Half 2 (this entry): on narrow
+    // viewports the collapsed rail becomes a 36x36 fixed button tucked into
+    // the top-left corner (position:fixed escapes the 0-width column's
+    // overflow:hidden clip); the other rail controls (new session, workspace
+    // region, footer) hide until the sidebar expands, and the toggle shows its
+    // panel icon (touch has no hover to reveal it) as the open affordance.
+    ...appendCssSuffix(
+      '@deepseek-ai/dsh-client-ui-sidebar',
+      'position:fixed;top:8px;left:8px',
+      (c) => `@media (max-width:1023px){.${c.get('root')}.${c.get('collapsed')}{position:fixed;top:8px;left:8px;width:36px;height:36px;padding:0;z-index:30;overflow:visible;border-radius:8px}.${c.get('root')}.${c.get('collapsed')} .${c.get('logoRow')}{height:36px;margin:0;padding:0}.${c.get('root')}.${c.get('collapsed')} .${c.get('newSession')},.${c.get('root')}.${c.get('collapsed')} .${c.get('regionArea')},.${c.get('root')}.${c.get('collapsed')} .${c.get('footArea')}{display:none}.${c.get('root')}.${c.get('collapsed')} .${c.get('toggle')} .${c.get('panelIcon')}{display:inline}.${c.get('root')}.${c.get('collapsed')} .${c.get('toggle')} .${c.get('railMark')}{display:none}}`,
+    ),
+  },
 ]
 
 /**
@@ -528,6 +557,53 @@ function hideOnMobile(pkg, classKeys) {
       }
       const newCss = cssMatch[1].slice(0, -1) + suffix + '"'
       return src.replace(cssMatch[0], `const css = ${newCss};`)
+    },
+  }
+}
+
+/**
+* CSS-module media-query patch for a client bundle: appends a generated
+* `@media` block to the inlined CSS-module string of the package's compiled
+* client.js. Hashed class names come from the bundle's own css map
+* (`*_module_css_default`), so the emitted selectors never break across dsh
+* builds. Handles both compiled shapes (`const css = ("...")` and
+* `const css = "..."`) and escaped quotes inside the CSS via an
+* escape-aware scan for the string's real closing quote. Idempotent: skips
+* when `marker` already appears in the css string.
+* @param pkg - the workspace package to patch (its lib/client.js).
+* @param marker - hash-independent substring proving the media query is
+*   already applied (checked against the css string).
+* @param build - (classes) => the `@media` suffix text to append; `classes`
+*   maps css-map keys to their hashed class names.
+*/
+function appendCssSuffix(pkg, marker, build) {
+  return {
+    pkg,
+    file: 'lib/client.js',
+    custom(entry, src, log) {
+      const start = src.indexOf('const css = ')
+      if (start < 0) throw new Error(`patch-dsh: ${pkg} css const not found`)
+      let p = start + 'const css = '.length
+      if (src[p] === '(') p++
+      if (src[p] !== '"') throw new Error(`patch-dsh: ${pkg} css const has no opening quote`)
+      p++
+      let end = -1
+      for (let k = p; k < src.length; k++) {
+        if (src[k] === '\\') { k++; continue }
+        if (src[k] === '"') { end = k; break }
+      }
+      if (end < 0) throw new Error(`patch-dsh: ${pkg} css const has no closing quote`)
+      if (src.slice(p, end).includes(marker)) {
+        log(`already applied in ${path.relative(root, entry)}`)
+        return src
+      }
+      const mapMatch = src.match(/module_css_default = \{([\s\S]*?)\};/)
+      if (!mapMatch) throw new Error(`patch-dsh: ${pkg} css map not found`)
+      const classes = new Map(
+        [...mapMatch[1].matchAll(/"([^"]+)": "([^"]+)"/g)].map((m) => [m[1], m[2]]),
+      )
+      const suffix = build(classes)
+      return src.slice(0, end) + suffix + src.slice(end)
     },
   }
 }

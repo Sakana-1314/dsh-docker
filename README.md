@@ -105,6 +105,10 @@ docker build --build-arg DSH_REF=dsh-v0.1.0-rc.7 -t deepseek-harness:local .
 
 两处都通过构建时补丁（`patch-dsh.cjs`）注入，无需改上游源码，升级上游版本后重新构建镜像即自动跟随。
 
+### 移动端侧边栏折叠后收起到左上角角标
+
+镜像通过 `patch-dsh.cjs` 对移动端（视口 < 1024px）侧边栏做了布局定制：折叠后不再以 56px 全高竖栏占据页面左侧一条宽度，而是**收起到左上角的角标按钮**（36×36 圆角，图标为展开面板图标），中心内容占满整页宽度；点击角标展开侧边栏，再次折叠即回到角标。桌面端（≥1024px）行为与上游一致（仍为 56px rail）。改动由 `patch-dsh.cjs` 对 `dsh-client-ui-layout`（折叠时 grid 强制 `0 / 1fr / 0`）与 `dsh-client-ui-sidebar`（折叠 rail 变固定角标）两个客户端包的编译产物注入 CSS 媒体查询实现，无需改上游源码。
+
 ### 其他构建时增强
 
 - **SSE `[DONE]` 容错**：部分 OpenAI 兼容网关代理的非 OpenAI 后端会在没有字面 `[DONE]` 帧的情况下干净地结束流式响应，上游会将其判定为 `STREAM_CLOSED` 终态错误；设置 `DSH_SSE_REQUIRE_DONE=0` 可关闭上游严格校验（默认保持严格）。
