@@ -37,9 +37,14 @@
 
 新增移动端 UI 定制时：断点优先与上游布局逻辑对齐（如 1024px 折叠断点）；隐藏类名用 `hideOnMobile`，结构性规则用 `appendCssSuffix`；并在此节补一条规范。
 
-## 5. 提交约定
+## 5. 提交流程（必循，每次改动都按此执行）
 
-按功能点拆分 commit，参考仓库现有风格：`feat:`（增强）/ `fix:`（修复）/ `docs:`（文档）。每笔 commit 独立、可审查；`VERSION` 与 `**.md` 的改动不会触发 CI 镜像构建（见 `.github/workflows/build.yml` 的 `paths-ignore`），纯文档提交无需等待构建。
+1. **按功能点拆分 commit**：一次改动先拆成若干逻辑独立、主题清晰的小 commit（如：patch 改动 / README / AGENTS.md 各一个），每笔 commit 都能独立审查；**禁止**把所有改动揉成一个大 commit。
+2. **功能分支**：从 `main` 切出 `feat/<简述>`（如 `feat/mobile-sidebar-corner`），在分支上逐个提交。**不要在 `main` 上直接提交改动**（纯 `**.md` 文档例外，见第 6 条）。
+3. **发起 PR**：推送分支后 `gh pr create --base main --head <分支>`；PR 标题用 `feat:` / `fix:` / `docs:` 前缀（本仓库 squash 合并后 PR 标题即成为 main 上的提交信息），描述列出改动清单。
+4. **合并并删除分支**：确认通过后用 `gh pr merge --squash --delete-branch`（本仓库**仅允许 squash 合并**，见仓库 Settings → Merge button；`--delete-branch` 会同时删除本地与远端分支）。合并后无需再手动删分支。
+5. **清理多余分支**：定期核对并删除已合并交付的陈旧分支——远端 `git push origin --delete <分支>`（先用 `gh pr list --state merged` 确认已交付），本地 `git fetch --prune`（或 `git remote prune origin`）清除陈旧跟踪引用。
+6. **文档例外**：纯 `**.md` 改动不会触发 CI 镜像构建（`.github/workflows/build.yml` 的 `paths-ignore` 忽略 `**.md`），可免 PR 直接提交到 `main`；其余改动一律走第 1–4 条。
 
 ## 6. 常见任务速查
 
