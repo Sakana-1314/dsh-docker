@@ -60,6 +60,60 @@ function entryFile(pkgDir, name) {
   return path.resolve(pkgDir, def)
 }
 
+/**
+ * Build the rotating brand-name component for one client bundle, in the
+ * compiled style (2-tab module-scope base indent). The component cycles the
+ * name next to the sidebar logo between the product name and the deployment
+ * slogan every DSH_BRAND_ROTATION_MS with a short crossfade; texts/interval
+ * come from the host-injected __DSH_BRAND_ROTATION__ /
+ * __DSH_BRAND_ROTATION_MS__ globals (driven by the DSH_BRAND_ROTATION /
+ * DSH_BRAND_ROTATION_MS env vars at serve time), with in-bundle defaults so
+ * the GUI behaves correctly even before those globals reach the page.
+ * @param fnName - the function name to declare (registration-facing name in
+ *   the official bundle; a private name in the generic sidebar fallback).
+ * @returns the component + module constants source text (no leading comment).
+ */
+function brandRotationSource(fnName) {
+  return [
+    `\t\tfunction ${fnName}() {`,
+    '\t\t\tconst [brandIndex, setBrandIndex] = (0, react.useState)(0);',
+    '\t\t\tconst [brandFaded, setBrandFaded] = (0, react.useState)(false);',
+    '\t\t\t(0, react.useEffect)(() => {',
+    '\t\t\t\tconst timer = window.setInterval(() => {',
+    '\t\t\t\t\tsetBrandFaded(true);',
+    '\t\t\t\t}, DSH_BRAND_ROTATION_MS);',
+    '\t\t\t\treturn () => window.clearInterval(timer);',
+    '\t\t\t}, []);',
+    '\t\t\t(0, react.useEffect)(() => {',
+    '\t\t\t\tif (!brandFaded) return;',
+    '\t\t\t\tconst swap = window.setTimeout(() => {',
+    '\t\t\t\t\tsetBrandIndex((index) => (index + 1) % DSH_BRAND_ROTATION.length);',
+    '\t\t\t\t\tsetBrandFaded(false);',
+    '\t\t\t\t}, DSH_BRAND_FADE_MS);',
+    '\t\t\t\treturn () => window.clearTimeout(swap);',
+    '\t\t\t}, [brandFaded]);',
+    '\t\t\treturn (0, react_jsx_runtime.jsx)("span", {',
+    '\t\t\t\tstyle: {',
+    '\t\t\t\t\tdisplay: "inline-flex",',
+    '\t\t\t\t\talignItems: "center",',
+    '\t\t\t\t\twhiteSpace: "nowrap",',
+    '\t\t\t\t\tminWidth: 0,',
+    '\t\t\t\t\topacity: brandFaded ? 0 : 1,',
+    '\t\t\t\t\ttransition: `opacity ${DSH_BRAND_FADE_MS}ms ease`',
+    '\t\t\t\t},',
+    '\t\t\t\tchildren: DSH_BRAND_ROTATION[brandIndex % DSH_BRAND_ROTATION.length]',
+    '\t\t\t});',
+    '\t\t}',
+    '\t\tconst DSH_BRAND_ROTATION = Array.isArray(globalThis.__DSH_BRAND_ROTATION__) && globalThis.__DSH_BRAND_ROTATION__.length > 0',
+    '\t\t\t? globalThis.__DSH_BRAND_ROTATION__',
+    '\t\t\t: ["DeepSeek Harness", "探索未至之境"];',
+    '\t\tconst DSH_BRAND_ROTATION_MS = Number.isFinite(globalThis.__DSH_BRAND_ROTATION_MS__) && globalThis.__DSH_BRAND_ROTATION_MS__ > 0',
+    '\t\t\t? globalThis.__DSH_BRAND_ROTATION_MS__',
+    '\t\t\t: 4000;',
+    '\t\tconst DSH_BRAND_FADE_MS = 200;',
+  ].join('\n')
+}
+
 const targets = [
   {
     pkg: '@deepseek-ai/dsh-llm',
@@ -292,20 +346,114 @@ const targets = [
     ],
   },
   {
-    // Host-side page globals for two deployment switches (injected beside
-    // __DSH_BOOT__ in bootInjections; one replacement stays idempotent):
+    // Host-side page globals injected beside __DSH_BOOT__ in bootInjections
+    // (one replacement stays idempotent):
     //  - __DSH_TRUST_FENCE_OFF__: carries DSH_DISABLE_TRUST_FENCE=1 to the
     //    browser so remote settings (model / credential page, loopback-only
     //    by design) become available exactly when the fence is off.
     //  - __DSH_SKIP_WELCOME_NOTICE__: skips the internal-testing welcome
     //    popup by default; set DSH_SHOW_WELCOME_NOTICE=1 to restore it.
+    //  - __DSH_BRAND_ROTATION__ / __DSH_BRAND_ROTATION_MS__: drive the sidebar
+    //    brand-name rotation (texts + interval) read by the patched
+    //    dsh-client-ui-brand-official occupant. Values are computed at serve
+    //    time from DSH_BRAND_ROTATION / DSH_BRAND_ROTATION_MS; the in-bundle
+    //    defaults already deliver the product/slogan pair, so the GUI behaves
+    //    correctly even before these globals reach the page.
     pkg: '@deepseek-ai/dsh-client-modules',
     replacements: [
       [
         '\t\t{\n\t\t\tkind: "global",\n\t\t\tname: "__DSH_BOOT__",\n\t\t\tvalue: graph\n\t\t}\n\t];',
-        '\t\t{\n\t\t\tkind: "global",\n\t\t\tname: "__DSH_BOOT__",\n\t\t\tvalue: graph\n\t\t},\n\t\t{\n\t\t\tkind: "global",\n\t\t\tname: "__DSH_TRUST_FENCE_OFF__",\n\t\t\tvalue: process.env.DSH_DISABLE_TRUST_FENCE === "1"\n\t\t},\n\t\t{\n\t\t\tkind: "global",\n\t\t\tname: "__DSH_SKIP_WELCOME_NOTICE__",\n\t\t\tvalue: process.env.DSH_SHOW_WELCOME_NOTICE !== "1"\n\t\t}\n\t];',
+        '\t\t{\n\t\t\tkind: "global",\n\t\t\tname: "__DSH_BOOT__",\n\t\t\tvalue: graph\n\t\t},\n\t\t{\n\t\t\tkind: "global",\n\t\t\tname: "__DSH_TRUST_FENCE_OFF__",\n\t\t\tvalue: process.env.DSH_DISABLE_TRUST_FENCE === "1"\n\t\t},\n\t\t{\n\t\t\tkind: "global",\n\t\t\tname: "__DSH_SKIP_WELCOME_NOTICE__",\n\t\t\tvalue: process.env.DSH_SHOW_WELCOME_NOTICE !== "1"\n\t\t},\n\t\t{\n\t\t\tkind: "global",\n\t\t\tname: "__DSH_BRAND_ROTATION__",\n\t\t\tvalue: String(process.env.DSH_BRAND_ROTATION ?? "DeepSeek Harness|探索未至之境").split("|").map((text) => text.trim()).filter(Boolean)\n\t\t},\n\t\t{\n\t\t\tkind: "global",\n\t\t\tname: "__DSH_BRAND_ROTATION_MS__",\n\t\t\tvalue: Number(process.env.DSH_BRAND_ROTATION_MS ?? 4000)\n\t\t}\n\t];',
       ],
     ],
+  },
+  {
+    // Sidebar brand name rotation: the official wordmark occupant
+    // (OfficialBrandName in dsh-client-ui-brand-official) becomes a rotating
+    // text span that cycles the name next to the logo between the product name
+    // and the deployment slogan ("探索未至之境") every DSH_BRAND_ROTATION_MS
+    // with a short crossfade. Texts/interval come from the host-injected
+    // __DSH_BRAND_ROTATION__ / __DSH_BRAND_ROTATION_MS__ globals (driven by
+    // the DSH_BRAND_ROTATION / DSH_BRAND_ROTATION_MS env vars at serve time);
+    // the in-bundle defaults below already deliver the product/slogan pair.
+    pkg: '@deepseek-ai/dsh-client-ui-brand-official',
+    file: 'lib/client.js',
+    replacements: [
+      // Pull the React hooks face into the bundle scope (only jsx-runtime was
+      // required before) for useState/useEffect.
+      [
+        '\t\tlet react_jsx_runtime = require("react/jsx-runtime");',
+        '\t\tlet react_jsx_runtime = require("react/jsx-runtime");\n\t\tlet react = require("react");',
+      ],
+      // Replace the fixed wordmark artwork with the rotating name text.
+      [
+        '\t\tfunction OfficialBrandName() {\n\t\t\treturn (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.BrandWordmark, { includeMark: false });\n\t\t}',
+        '\t\t/**\n' +
+          '\t\t* Deployment brand rotation (patched by dsh-docker patch-dsh.cjs):\n' +
+          '\t\t* the sidebar name text cycles through DSH_BRAND_ROTATION every\n' +
+          '\t\t* DSH_BRAND_ROTATION_MS milliseconds with a short crossfade.\n' +
+          '\t\t* Values come from the host-injected __DSH_BRAND_ROTATION__ /\n' +
+          '\t\t* __DSH_BRAND_ROTATION_MS__ globals when present; the in-bundle\n' +
+          '\t\t* defaults below are the product / deployment-slogan pair.\n' +
+          '\t\t*/\n' +
+          brandRotationSource('OfficialBrandName'),
+      ],
+    ],
+  },
+  {
+    // Fixed browser-title format "会话标题 - DeepSeek": the compiled
+    // DocumentTitle (dsh-client-ui-renderer) pins the product suffix to
+    // "DeepSeek" (upstream baked "DSH Local Build" / the build-time
+    // DSH_CLIENT_TITLE into the bundle) and swaps the em-dash separator for a
+    // hyphen, so the tab reads "<session title> - DeepSeek" (or just
+    // "DeepSeek" when no session is selected).
+    pkg: '@deepseek-ai/dsh-client-ui-renderer',
+    file: 'lib/client.js',
+    replacements: [
+      [
+        '\t\t\tconst productTitle = {}.DSH_CLIENT_TITLE ?? DEFAULT_CLIENT_TITLE;\n\t\t\t(0, react.useEffect)(() => {\n\t\t\t\tdocument.title = title === void 0 ? productTitle : `${title} — ${productTitle}`;',
+        '\t\t\tconst productTitle = "DeepSeek";\n\t\t\t(0, react.useEffect)(() => {\n\t\t\t\tdocument.title = title === void 0 ? productTitle : `${title} - ${productTitle}`;',
+      ],
+    ],
+  },
+  {
+    // Sidebar brand name rotation for generic (non-official) builds: the
+    // shipped official occupant (dsh-client-ui-brand-official) only registers
+    // under the "official" client build profile, so every other build shows
+    // the SidebarRoot fallback "DSH Local Build" instead. Swap that fallback
+    // for the same rotating text span as the official occupant, so the name
+    // next to the logo rotates between the product name and the deployment
+    // slogan in EVERY build profile. A custom handler because the fallback's
+    // commit-hash badge reads `{}.DSH_CLIENT_COMMIT_HASH` in generic builds
+    // but an inlined hash literal in official-profile builds — a regex matches
+    // both forms.
+    pkg: '@deepseek-ai/dsh-client-ui-sidebar',
+    file: 'lib/client.js',
+    custom(entry, src, log) {
+      if (!src.includes('function SidebarBrandRotation')) {
+        const anchor = '\t\tconst SCROLLBAR_LINGER_MS = 2e3;'
+        const count = src.split(anchor).length - 1
+        if (count !== 1) throw new Error(`patch-dsh: ui-sidebar SCROLLBAR_LINGER_MS anchor found ${count} times`)
+        const doc = '\t\t/**\n' +
+          '\t\t* Deployment brand rotation for generic (non-official) builds\n' +
+          '\t\t* (patched by dsh-docker patch-dsh.cjs): the sidebar name text\n' +
+          '\t\t* cycles through DSH_BRAND_ROTATION every DSH_BRAND_ROTATION_MS\n' +
+          '\t\t* milliseconds with a short crossfade. Mirrors the official\n' +
+          '\t\t* occupant in dsh-client-ui-brand-official.\n' +
+          '\t\t*/\n'
+        src = src.replace(anchor, `${anchor}\n\n${doc}${brandRotationSource('SidebarBrandRotation')}`)
+      } else {
+        log(`brand rotation component already present in ${path.relative(root, entry)}`)
+      }
+      const fallbackRe = /fallback: \(0, react_jsx_runtime\.jsxs\)\(react_jsx_runtime\.Fragment, \{ children: \[\(0, react_jsx_runtime\.jsx\)\("span", \{\s*className: SidebarRoot_module_css_default\.fallbackBrandName,\s*children: "DSH Local Build"\s*\}\)[\s\S]*?\] \}\)/
+      if (src.includes('fallback: (0, react_jsx_runtime.jsx)(SidebarBrandRotation, {})')) {
+        log(`fallback already swapped in ${path.relative(root, entry)}`)
+      } else {
+        if (!fallbackRe.test(src)) throw new Error('patch-dsh: ui-sidebar fallback pattern not found')
+        src = src.replace(fallbackRe, 'fallback: (0, react_jsx_runtime.jsx)(SidebarBrandRotation, {})')
+      }
+      return src
+    },
   },
   {
     // Browser half of the same hook: honor the injected __DSH_TRUST_FENCE_OFF__
@@ -588,4 +736,26 @@ for (const { file, replacements } of presetTargets) {
   const src = fs.readFileSync(entry, 'utf8')
   fs.writeFileSync(entry, applyReplacements(file, src, replacements))
   console.log(`patch-dsh: translated agent-preset prompts in ${file}`)
+}
+
+// ── Built Web shell's initial <title> ────────────────────────────────────
+// The compiled DocumentTitle (patched above) drives the tab title at runtime;
+// the shell's initial <title> is baked into apps/web/dist/index.html by
+// `pnpm run build:web`. Point it at the same fixed "DeepSeek" product name so
+// the tab never flashes "DSH Local Build" / "DeepSeek Harness" before
+// hydration. The exact build-time title text varies by profile, so this
+// replaces whatever <title> the build emitted. Tolerant: skipped when the web
+// shell has not been built yet (patch-dsh.cjs run right after build:lib only).
+const webIndexHtml = path.join(root, 'apps/web/dist/index.html')
+if (fs.existsSync(webIndexHtml)) {
+  const html = fs.readFileSync(webIndexHtml, 'utf8')
+  const fixed = html.replace(/<title>[^<]*<\/title>/, '<title>DeepSeek</title>')
+  if (fixed !== html) {
+    fs.writeFileSync(webIndexHtml, fixed)
+    console.log('patch-dsh: pinned the built web shell <title> to DeepSeek')
+  } else {
+    console.log('patch-dsh: built web shell <title> already pinned')
+  }
+} else {
+  console.log('patch-dsh: apps/web/dist/index.html not built yet — skipping its <title> patch')
 }

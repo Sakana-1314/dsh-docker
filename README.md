@@ -69,6 +69,8 @@ docker build --build-arg DSH_REF=dsh-v0.1.0-rc.7 -t deepseek-harness:local .
 | `DSH_TRUSTED_HOSTS` | 信任的访问地址（空格/逗号分隔）：局域网 IP、域名、反向代理地址。`/api` 与插件路由（`/sidebar/*`）都会放行 | 无（容器自身的局域网 IP 自动受信） |
 | `DSH_DISABLE_TRUST_FENCE` | 设为 `1` 彻底关闭信任栅栏，**同时作用于 `/api` 和已安装插件的路由（如 `/sidebar/*`）**，并解锁远程浏览器访问 settings（模型 / 凭证设置页，默认仅限 `localhost` 可用，远程显示「加载提供方目录失败」）；无鉴权，仅在你自己的反代 / 鉴权后使用 | 无 |
 | `DSH_SHOW_WELCOME_NOTICE` | 设为 `1` 恢复首次进入 GUI 时的内测声明弹窗；默认（不设置）已通过构建时补丁跳过该弹窗 | 无 |
+| `DSH_BRAND_ROTATION` | 侧边栏左上角品牌名称轮播的文案列表，用 `|` 分隔，如 `DeepSeek Harness\|探索未至之境` | `DeepSeek Harness\|探索未至之境` |
+| `DSH_BRAND_ROTATION_MS` | 品牌名称轮播切换间隔（毫秒） | `4000` |
 
 ### 任意模型 / 任意供应商都可设置思考等级（推理等级）
 
@@ -93,6 +95,15 @@ docker build --build-arg DSH_REF=dsh-v0.1.0-rc.7 -t deepseek-harness:local .
 ### `/auto-plan` 命令：计划退出自动批准
 
 镜像通过 `patch-dsh.cjs` 为 `dsh-plan-mode` 注入 `/auto-plan` 命令：与 `/plan` 一样进入计划模式（`plan:policy` 引导、模型探索并制定计划），但当模型调用 `exit_plan_mode` 时**跳过用户评审确认卡片直接批准**，退出计划模式并继续执行计划——省去一次手动确认。`/auto-plan off` 与 `/plan off` 均可退出；auto 标记由会话日志折叠（`command/run` 记录），重启 / fork 后可恢复。普通 `/plan` 的行为完全不变（仍弹评审确认），在已激活计划会话中用 `/auto-plan` 或 `/plan` 可在两种模式间切换。该增强同样通过 `patch-dsh.cjs` 在构建时完成，无需额外配置。
+
+### 侧边栏品牌名称轮播与固定页面标题
+
+镜像通过 `patch-dsh.cjs` 对 GUI 做了两处品牌定制：
+
+- **侧边栏品牌名称轮播**：左上角 logo 右侧的品牌名从固定字标改为文本，在 `DeepSeek Harness` 与 `探索未至之境` 之间轮播（默认每 4 秒切换，带淡入淡出）。文案与间隔可用 `DSH_BRAND_ROTATION`（`|` 分隔）/ `DSH_BRAND_ROTATION_MS` 环境变量调整；渲染在浏览器端完成，改环境变量后刷新页面即生效。
+- **固定页面标题格式**：浏览器标签页标题固定为「会话标题 - DeepSeek」（未选择会话时显示 `DeepSeek`），不再跟随上游的 `DSH_CLIENT_TITLE` 构建值（`DeepSeek Harness` / `DSH Local Build`）；初始 HTML `<title>` 同步固定为 `DeepSeek`，避免刷新瞬间闪旧标题。
+
+两处都通过构建时补丁（`patch-dsh.cjs`）注入，无需改上游源码，升级上游版本后重新构建镜像即自动跟随。
 
 ### 其他构建时增强
 
