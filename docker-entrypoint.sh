@@ -1,6 +1,11 @@
 #!/bin/sh
 set -e
 
+# A bind-mounted DSH_HOME may start empty. Create the profile root before
+# dsh (and any startup plugins) try to enumerate it.
+DSH_HOME_DIR="${DSH_HOME:-$HOME/.dsh}"
+mkdir -p "$DSH_HOME_DIR/profiles"
+
 # Bind host (0.0.0.0 by default; DSH_HOST=127.0.0.1 reverts to loopback).
 HOST="${DSH_HOST:-0.0.0.0}"
 case "$HOST" in
