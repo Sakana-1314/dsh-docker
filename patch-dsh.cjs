@@ -175,16 +175,19 @@ const targets = [
       // Fill the reasoning metadata for models without any (universal ladder
       // with a FORCED default of High -- the picker then offers no "Default"
       // entry and every selection/request carries high unless changed).
+      // Since 0.1.2-alpha.2 the surrounding function nests one level deeper
+      // (the defaultMaxTokens validation block was added before it), so the
+      // compiled indent is 3 tabs, not 2.
       [
-        'const reasoning = resolved.reasoning;\n\t\tif (reasoning === void 0) return info;',
+        'const reasoning = resolved.reasoning;\n\t\t\tif (reasoning === void 0) return info;',
         'const reasoning = resolved.reasoning;\n' +
-          '\t\tif (reasoning === void 0) return {\n' +
-          '\t\t\t...info,\n' +
-          '\t\t\treasoning: {\n' +
-          '\t\t\t\tefforts: UNIVERSAL_REASONING_LEVELS.map((effort) => ({ ...effort })),\n' +
-          '\t\t\t\tdefaultEffort: "high"\n' +
-          '\t\t\t}\n' +
-          '\t\t};',
+          '\t\t\tif (reasoning === void 0) return {\n' +
+          '\t\t\t\t...info,\n' +
+          '\t\t\t\treasoning: {\n' +
+          '\t\t\t\t\tefforts: UNIVERSAL_REASONING_LEVELS.map((effort) => ({ ...effort })),\n' +
+          '\t\t\t\t\tdefaultEffort: "high"\n' +
+          '\t\t\t\t}\n' +
+          '\t\t\t};',
       ],
     ],
   },
@@ -309,15 +312,18 @@ const targets = [
     // carried out without a confirmation step. The marker is folded from the
     // session log (`command/run` name + `plan/mode` active flips), so resume
     // and fork restore it with no live mirror, and it never touches
-    // plan/mode's payload or the projection wire (the `plan` projection still
-    // reports {active, pending}).
-    // Anchors target the compiled lib/index.js of dsh-v0.1.1-rc.2.
+    // /auto-plan (see README). Since 0.1.2-alpha.2 the logged mode is an
+    // event projection (planProjectionDefinition) instead of a standalone
+    // foldPlanMode + planUnitStateSchema, so the foldAutoPlan helper is
+    // injected before the projection definition; the /plan command closure
+    // and the exit tool body kept their 0.1.1-rc.2 compiled shape.
     pkg: '@deepseek-ai/dsh-plan-mode',
     replacements: [
-      // foldAutoPlan helper, injected after foldPlanMode (before the schemas).
+      // foldAutoPlan helper, injected right before the plan projection
+      // definition.
       [
-        '\treturn active;\n}\nconst planUnitStateSchema = z.object({',
-        '\treturn active;\n}\n/**\n * /auto-plan marker folded from the session log: true while the last\n * plan-family command was a successful `auto-plan` entry and no later\n * event exited plan mode or selected the reviewed `/plan` mode.\n */\nfunction foldAutoPlan(events, end = events.length) {\n\tlet auto = false;\n\tlet index = 0;\n\tfor (const event of events) {\n\t\tif (index >= end) break;\n\t\tindex++;\n\t\tif (event.type === "plan/mode") {\n\t\t\tif (event.data.active !== true) auto = false;\n\t\t} else if (event.type === "command/run") {\n\t\t\tif (event.data.name === "auto-plan") auto = (event.data.args ?? "").trim() !== "off";\n\t\t\telse if (event.data.name === "plan") auto = false;\n\t\t}\n\t}\n\treturn auto;\n}\nconst planUnitStateSchema = z.object({',
+        'const planProjectionDefinition = {',
+        '/**\n * /auto-plan marker folded from the session log: true while the last\n * plan-family command was a successful `auto-plan` entry and no later\n * event exited plan mode or selected the reviewed `/plan` mode.\n */\nfunction foldAutoPlan(events, end = events.length) {\n\tlet auto = false;\n\tlet index = 0;\n\tfor (const event of events) {\n\t\tif (index >= end) break;\n\t\tindex++;\n\t\tif (event.type === "plan/mode") {\n\t\t\tif (event.data.active !== true) auto = false;\n\t\t} else if (event.type === "command/run") {\n\t\t\tif (event.data.name === "auto-plan") auto = (event.data.args ?? "").trim() !== "off";\n\t\t\telse if (event.data.name === "plan") auto = false;\n\t\t}\n\t}\n\treturn auto;\n}\nconst planProjectionDefinition = {',
       ],
       // exit_plan_mode: in an auto session, approve without the user review.
       [
@@ -361,9 +367,12 @@ const targets = [
     //    correctly even before these globals reach the page.
     pkg: '@deepseek-ai/dsh-client-modules',
     replacements: [
+      // Since 0.1.2-alpha.2 the boot globals are pushed row-by-row
+      // (rows.push({...})) instead of built as one array literal, so the
+      // extra globals are appended as additional rows.
       [
-        '\t\t{\n\t\t\tkind: "global",\n\t\t\tname: "__DSH_BOOT__",\n\t\t\tvalue: graph\n\t\t}\n\t];',
-        '\t\t{\n\t\t\tkind: "global",\n\t\t\tname: "__DSH_BOOT__",\n\t\t\tvalue: graph\n\t\t},\n\t\t{\n\t\t\tkind: "global",\n\t\t\tname: "__DSH_TRUST_FENCE_OFF__",\n\t\t\tvalue: process.env.DSH_DISABLE_TRUST_FENCE === "1"\n\t\t},\n\t\t{\n\t\t\tkind: "global",\n\t\t\tname: "__DSH_SKIP_WELCOME_NOTICE__",\n\t\t\tvalue: process.env.DSH_SHOW_WELCOME_NOTICE !== "1"\n\t\t},\n\t\t{\n\t\t\tkind: "global",\n\t\t\tname: "__DSH_BRAND_ROTATION__",\n\t\t\tvalue: String(process.env.DSH_BRAND_ROTATION ?? "DeepSeek Harness|探索未至之境").split("|").map((text) => text.trim()).filter(Boolean)\n\t\t},\n\t\t{\n\t\t\tkind: "global",\n\t\t\tname: "__DSH_BRAND_ROTATION_MS__",\n\t\t\tvalue: Number(process.env.DSH_BRAND_ROTATION_MS ?? 4000)\n\t\t}\n\t];',
+        '\trows.push({\n\t\tkind: "global",\n\t\tname: "__DSH_BOOT__",\n\t\tvalue: graph\n\t});\n\treturn rows;',
+        '\trows.push({\n\t\tkind: "global",\n\t\tname: "__DSH_BOOT__",\n\t\tvalue: graph\n\t});\n\trows.push({\n\t\tkind: "global",\n\t\tname: "__DSH_TRUST_FENCE_OFF__",\n\t\tvalue: process.env.DSH_DISABLE_TRUST_FENCE === "1"\n\t});\n\trows.push({\n\t\tkind: "global",\n\t\tname: "__DSH_SKIP_WELCOME_NOTICE__",\n\t\tvalue: process.env.DSH_SHOW_WELCOME_NOTICE !== "1"\n\t});\n\trows.push({\n\t\tkind: "global",\n\t\tname: "__DSH_BRAND_ROTATION__",\n\t\tvalue: String(process.env.DSH_BRAND_ROTATION ?? "DeepSeek Harness|探索未至之境").split("|").map((text) => text.trim()).filter(Boolean)\n\t});\n\trows.push({\n\t\tkind: "global",\n\t\tname: "__DSH_BRAND_ROTATION_MS__",\n\t\tvalue: Number(process.env.DSH_BRAND_ROTATION_MS ?? 4000)\n\t});\n\treturn rows;',
       ],
     ],
   },
@@ -401,18 +410,22 @@ const targets = [
     ],
   },
   {
-    // Fixed browser-title format "会话标题 - DeepSeek": the compiled
-    // DocumentTitle (dsh-client-ui-renderer) pins the product suffix to
-    // "DeepSeek" (upstream baked "DSH Local Build" / the build-time
-    // DSH_CLIENT_TITLE into the bundle) and swaps the em-dash separator for a
-    // hyphen, so the tab reads "<session title> - DeepSeek" (or just
-    // "DeepSeek" when no session is selected).
-    pkg: '@deepseek-ai/dsh-client-ui-renderer',
+    // Fixed browser-title format "会话标题 - DeepSeek": DocumentTitle moved
+    // from dsh-client-ui-renderer to dsh-client-ui-layout in 0.1.2-alpha.2 and
+    // now receives productTitle as a prop (no DSH_CLIENT_TITLE constant in the
+    // bundle anymore), so pin the caller's value to "DeepSeek" and swap the
+    // em-dash separator for a hyphen: the tab reads "<session title> - DeepSeek"
+    // (or just "DeepSeek" when no session is selected).
+    pkg: '@deepseek-ai/dsh-client-ui-layout',
     file: 'lib/client.js',
     replacements: [
       [
-        '\t\t\tconst productTitle = {}.DSH_CLIENT_TITLE ?? DEFAULT_CLIENT_TITLE;\n\t\t\t(0, react.useEffect)(() => {\n\t\t\t\tdocument.title = title === void 0 ? productTitle : `${title} — ${productTitle}`;',
-        '\t\t\tconst productTitle = "DeepSeek";\n\t\t\t(0, react.useEffect)(() => {\n\t\t\t\tdocument.title = title === void 0 ? productTitle : `${title} - ${productTitle}`;',
+        'productTitle: "DeepSeek Harness",',
+        'productTitle: "DeepSeek",',
+      ],
+      [
+        'document.title = title === void 0 ? productTitle : `${title} — ${productTitle}`;',
+        'document.title = title === void 0 ? productTitle : `${title} - ${productTitle}`;',
       ],
     ],
   },
@@ -445,7 +458,10 @@ const targets = [
       } else {
         log(`brand rotation component already present in ${path.relative(root, entry)}`)
       }
-      const fallbackRe = /fallback: \(0, react_jsx_runtime\.jsxs\)\(react_jsx_runtime\.Fragment, \{ children: \[\(0, react_jsx_runtime\.jsx\)\("span", \{\s*className: SidebarRoot_module_css_default\.fallbackBrandName,\s*children: "DSH Local Build"\s*\}\)[\s\S]*?\] \}\)/
+      // Since 0.1.2-alpha.2 the generic-build fallback renders through the
+      // i18n key t("brand.localBuild") as a ternary: a plain span when
+      // buildVersion is absent, otherwise localBuildBrand + version badge.
+      const fallbackRe = /fallback: buildVersion === void 0 \? \(0, react_jsx_runtime\.jsx\)\("span", \{\s*className: SidebarRoot_module_css_default\.fallbackBrandName,\s*children: t\("brand\.localBuild"\)\s*\}\)\s*: \(0, react_jsx_runtime\.jsxs\)\("span", \{\s*className: SidebarRoot_module_css_default\.localBuildBrand,\s*children: \[[\s\S]*?\]\s*\}\)/
       if (src.includes('fallback: (0, react_jsx_runtime.jsx)(SidebarBrandRotation, {})')) {
         log(`fallback already swapped in ${path.relative(root, entry)}`)
       } else {
@@ -463,8 +479,8 @@ const targets = [
     file: 'lib/client.js',
     replacements: [
       [
-        'isLoopback: pageLocation === void 0 || isLoopbackHostname(pageLocation.hostname),',
-        'isLoopback: pageLocation === void 0 || isLoopbackHostname(pageLocation.hostname) || globalThis.__DSH_TRUST_FENCE_OFF__ === true,',
+        'isLoopback: transport?.ownsHost === true || pageLocation === void 0 || isLoopbackHostname(pageLocation.hostname),',
+        'isLoopback: transport?.ownsHost === true || pageLocation === void 0 || isLoopbackHostname(pageLocation.hostname) || globalThis.__DSH_TRUST_FENCE_OFF__ === true,',
       ],
     ],
   },
@@ -790,19 +806,23 @@ const MINIMAL_BASH_DESCRIPTION_LINES = [
 
 const presetTargets = [
   {
-    file: 'apps/cli/config/agent-presets/standard/agent.cordis.yml',
+    // Since 0.1.2-alpha.2 the built-in presets live in
+    // packages/preset/agent-presets/presets/<name>/agent.cordis.yml; the
+    // former `code` preset was removed upstream (replaced by `ptc`, which
+    // shares the standard persona and plan-mode paragraphs).
+    file: 'packages/preset/agent-presets/presets/standard/agent.cordis.yml',
     replacements: [...CODING_PERSONA, ...PLAN_MODE_PARAGRAPHS],
   },
   {
-    file: 'apps/cli/config/agent-presets/code/agent.cordis.yml',
+    file: 'packages/preset/agent-presets/presets/ptc/agent.cordis.yml',
     replacements: [...CODING_PERSONA, ...PLAN_MODE_PARAGRAPHS],
   },
   {
-    file: 'apps/cli/config/agent-presets/cordis/agent.cordis.yml',
+    file: 'packages/preset/agent-presets/presets/cordis/agent.cordis.yml',
     replacements: [...CORDIS_PERSONA_PARAGRAPHS, ...PLAN_MODE_PARAGRAPHS],
   },
   {
-    file: 'apps/cli/config/agent-presets/minimal/agent.cordis.yml',
+    file: 'packages/preset/agent-presets/presets/minimal/agent.cordis.yml',
     replacements: [...MINIMAL_PERSONA, ...MINIMAL_BASH_DESCRIPTION_LINES],
   },
 ]
