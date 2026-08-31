@@ -80,13 +80,13 @@ RUN apt-get update \
     && gh --version \
     && rm -rf /var/lib/apt/lists/*
 
-# Claude Code CLI (native install, latest release) — preinstalled so it can be
-# used as a subagent tool. The native installer puts the launcher at
-# /root/.local/bin/claude; symlink it into a standard PATH location. The
-# background auto-updater is disabled via DISABLE_AUTOUPDATER (below) so the
-# version only changes when the image is rebuilt (`claude update` still works).
-RUN curl -fsSL https://claude.ai/install.sh | bash \
-    && ln -s /root/.local/bin/claude /usr/local/bin/claude \
+# Claude Code CLI (npm global install, latest release) — preinstalled so it can
+# be used as a subagent tool. The npm package ships the same native binary as
+# the standalone installer but avoids claude.ai's region-gated install script;
+# a global npm install does not auto-update, so the version only changes when
+# the image is rebuilt (`claude update` still works if you want it).
+RUN npm install -g @anthropic-ai/claude-code --no-audit --no-fund \
+    && npm cache clean --force \
     && claude --version
 
 # Copy the built + patched source tree: the dsh CLI (apps/cli), every workspace
