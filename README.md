@@ -84,10 +84,10 @@ docker build --build-arg DSH_REF=dsh-v0.1.0-rc.7 -t deepseek-harness:local .
 
 ### 四种内置智能体模式的提示词已翻译为中文
 
-镜像构建时会把 dsh 自带的四种智能体预设（`code` / `cordis` / `minimal` / `standard`）里面向模型的英文提示词替换为中文，包括：
+镜像构建时会把 dsh 自带的智能体预设（`standard` / `cordis` / `minimal` / `ptc`，0.1.2-alpha.2 起上游以 `ptc` 取代了旧的 `code` 预设）里面向模型的英文提示词替换为中文，包括：
 
 - 各预设的角色设定（persona），并额外追加一句「除非用户明确要求其他语言，全程使用中文思考和回复」；
-- 计划模式（plan mode）的规则段落（`standard` / `code` / `cordis` 三个预设）；
+- 计划模式（plan mode）的规则段落（`standard` / `cordis` / `ptc` 三个预设）；
 - `minimal` 预设中持久化 shell 工具（bash / pwsh）的描述。
 
 这样基于这些预设运行的会话拿到的是中文系统提示词，模型会更倾向用中文思考与回复。`{{model}}` / `{{cwd}}` 等占位符保持原样，YAML 结构逐段保留；补丁幂等，可重复执行。该翻译同样通过 `patch-dsh.cjs` 在构建时完成，无需额外配置。
@@ -115,10 +115,10 @@ docker build --build-arg DSH_REF=dsh-v0.1.0-rc.7 -t deepseek-harness:local .
 
 ### 预装 Claude Code CLI
 
-镜像预装了 [Claude Code](https://code.claude.com/)（官方原生安装，跟随最新 release），容器内 `claude` 命令可直接使用，方便把它作为 sub agent 工具调用：
+镜像预装了 [Claude Code](https://code.claude.com/)（通过 `npm install -g @anthropic-ai/claude-code` 安装，跟随最新 release；npm 包与官方原生安装是同一份二进制，但不依赖 claude.ai 的地区可用性），容器内 `claude` 命令可直接使用，方便把它作为 sub agent 工具调用：
 
 - **认证**：设置 `ANTHROPIC_API_KEY` 环境变量即可免登录使用；也可以把宿主机已有的 `~/.claude` 目录挂载进容器（`-v ~/.claude:/root/.claude`）复用登录态。认证与配置存放在 `/root/.claude`、`/root/.claude.json`，与 `/root/.dsh` 挂载互不影响。
-- **版本更新**：镜像默认设置 `DISABLE_AUTOUPDATER=1`，关闭后台自动更新——版本只在重新构建镜像时更新，容器内可随时用 `claude update` 手动升级（或覆盖该环境变量开启自动更新）。
+- **版本更新**：npm 全局安装不自动更新（镜像里的 `DISABLE_AUTOUPDATER=1` 保持关闭），版本随重新构建镜像更新；容器内可随时用 `claude update` 手动升级。
 - **验证**：构建时执行 `claude --version` 确认安装成功。
 
 ### 其他构建时增强
