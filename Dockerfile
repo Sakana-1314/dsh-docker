@@ -80,6 +80,15 @@ RUN apt-get update \
     && gh --version \
     && rm -rf /var/lib/apt/lists/*
 
+# Claude Code CLI (native install, latest release) — preinstalled so it can be
+# used as a subagent tool. The native installer puts the launcher at
+# /root/.local/bin/claude; symlink it into a standard PATH location. The
+# background auto-updater is disabled via DISABLE_AUTOUPDATER (below) so the
+# version only changes when the image is rebuilt (`claude update` still works).
+RUN curl -fsSL https://claude.ai/install.sh | bash \
+    && ln -s /root/.local/bin/claude /usr/local/bin/claude \
+    && claude --version
+
 # Copy the built + patched source tree: the dsh CLI (apps/cli), every workspace
 # package (compiled lib bundles) and the built Web shell (apps/web/dist).
 # These layers change on every dsh source update.
@@ -100,7 +109,8 @@ COPY patch-plugin-fence.cjs /usr/local/bin/patch-plugin-fence.cjs
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENV DSH_HOME=/root/.dsh \
-    NODE_ENV=production
+    NODE_ENV=production \
+    DISABLE_AUTOUPDATER=1
 
 # Runs as root.
 WORKDIR /workspace
