@@ -113,6 +113,14 @@ docker build --build-arg DSH_REF=dsh-v0.1.0-rc.7 -t deepseek-harness:local .
 
 容器启动时会自动创建 `${DSH_HOME:-$HOME/.dsh}/profiles` 目录。这样即使把一个空的宿主机目录挂载到 `/root/.dsh`，首次启动也不会因为 profiles 目录不存在而提示错误；已有目录和其中的插件配置不会受到影响。
 
+### 预装 Claude Code CLI
+
+镜像预装了 [Claude Code](https://code.claude.com/)（官方原生安装，跟随最新 release），容器内 `claude` 命令可直接使用，方便把它作为 sub agent 工具调用：
+
+- **认证**：设置 `ANTHROPIC_API_KEY` 环境变量即可免登录使用；也可以把宿主机已有的 `~/.claude` 目录挂载进容器（`-v ~/.claude:/root/.claude`）复用登录态。认证与配置存放在 `/root/.claude`、`/root/.claude.json`，与 `/root/.dsh` 挂载互不影响。
+- **版本更新**：镜像默认设置 `DISABLE_AUTOUPDATER=1`，关闭后台自动更新——版本只在重新构建镜像时更新，容器内可随时用 `claude update` 手动升级（或覆盖该环境变量开启自动更新）。
+- **验证**：构建时执行 `claude --version` 确认安装成功。
+
 ### 其他构建时增强
 
 - **SSE `[DONE]` 容错**：部分 OpenAI 兼容网关代理的非 OpenAI 后端会在没有字面 `[DONE]` 帧的情况下干净地结束流式响应，上游会将其判定为 `STREAM_CLOSED` 终态错误；设置 `DSH_SSE_REQUIRE_DONE=0` 可关闭上游严格校验（默认保持严格）。
