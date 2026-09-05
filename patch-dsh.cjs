@@ -415,13 +415,18 @@ const targets = [
     // now receives productTitle as a prop (no DSH_CLIENT_TITLE constant in the
     // bundle anymore), so pin the caller's value to "DeepSeek" and swap the
     // em-dash separator for a hyphen: the tab reads "<session title> - DeepSeek"
-    // (or just "DeepSeek" when no session is selected).
+    // (or just "DeepSeek" when no session is selected). Upstream reads
+    // productTitle from the build-time DSH_CLIENT_TITLE constant, whose
+    // compiled value differs between an npm publish ("DeepSeek Harness") and
+    // our own build:lib (unset -> t("brand.localBuild")), so pinning the
+    // literal at the call site is not anchor-stable; instead the component
+    // body overrides the prop.
     pkg: '@deepseek-ai/dsh-client-ui-layout',
     file: 'lib/client.js',
     replacements: [
       [
-        'productTitle: "DeepSeek Harness",',
-        'productTitle: "DeepSeek",',
+        'function DocumentTitle({ title, productTitle }) {\n\t\t\t(0, react.useEffect)(() => {',
+        'function DocumentTitle({ title, productTitle }) {\n\t\t\tproductTitle = "DeepSeek";\n\t\t\t(0, react.useEffect)(() => {',
       ],
       [
         'document.title = title === void 0 ? productTitle : `${title} — ${productTitle}`;',
