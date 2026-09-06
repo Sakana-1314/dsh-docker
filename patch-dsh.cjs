@@ -201,6 +201,21 @@ const targets = [
         'function isTrustedApiRequest(request, trustedHosts) {',
         'function isTrustedApiRequest(request, trustedHosts) {\n\tif (process.env.DSH_DISABLE_TRUST_FENCE === "1") return true;',
       ],
+      // Browser-session (cookie/token) auth bypass — the second half of the same
+      // opt-in. Since 0.1.3-alpha.1 the /api and the index page additionally
+      // demand a valid browser session: a launch ?token= on the root URL mints
+      // a signed cookie, and a trusted-but-unauthenticated request otherwise
+      // gets 401 even when the Host/Origin fence is off — which is what shows up
+      // as "token parameter" authentication for a non-loopback browser. Every
+      // auth decision funnels through BrowserAuth.isAuthenticated
+      // (requestRejection for the API/channels/WebSocket, authorizeIndex for
+      // serving index.html), so under DSH_DISABLE_TRUST_FENCE=1 it always passes
+      // and the whole GUI opens without any token/cookie — use only behind your
+      // own auth.
+      [
+        '\tisAuthenticated(request) {\n\t\tconst authority = requestAuthority(request.headers);',
+        '\tisAuthenticated(request) {\n\t\tif (process.env.DSH_DISABLE_TRUST_FENCE === "1") return true;\n\t\tconst authority = requestAuthority(request.headers);',
+      ],
     ],
   },
   {
