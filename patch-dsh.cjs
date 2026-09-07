@@ -338,12 +338,17 @@ const targets = [
       // definition.
       [
         'const planProjectionDefinition = {',
-        '/**\n * /auto-plan marker folded from the session log: true while the last\n * plan-family command was a successful `auto-plan` entry and no later\n * event exited plan mode or selected the reviewed `/plan` mode.\n */\nfunction foldAutoPlan(events, end = events.length) {\n\tlet auto = false;\n\tlet index = 0;\n\tfor (const event of events) {\n\t\tif (index >= end) break;\n\t\tindex++;\n\t\tif (event.type === "plan/mode") {\n\t\t\tif (event.data.active !== true) auto = false;\n\t\t} else if (event.type === "command/run") {\n\t\t\tif (event.data.name === "auto-plan") auto = (event.data.args ?? "").trim() !== "off";\n\t\t\telse if (event.data.name === "plan") auto = false;\n\t\t}\n\t}\n\treturn auto;\n}\nconst planProjectionDefinition = {',
+        '/**\n * /auto-plan marker folded from the session log: true while the last\n * plan-family command was a successful `auto-plan` entry and no later\n * event exited plan mode or selected the reviewed `/plan` mode.\n */\nfunction foldAutoPlan(events, end = events?.length ?? 0) {\n\tlet auto = false;\n\tlet index = 0;\n\tfor (const event of events ?? []) {\n\t\tif (index >= end) break;\n\t\tindex++;\n\t\tif (event.type === "plan/mode") {\n\t\t\tif (event.data.active !== true) auto = false;\n\t\t} else if (event.type === "command/run") {\n\t\t\tif (event.data.name === "auto-plan") auto = (event.data.args ?? "").trim() !== "off";\n\t\t\telse if (event.data.name === "plan") auto = false;\n\t\t}\n\t}\n\treturn auto;\n}\nconst planProjectionDefinition = {',
       ],
       // exit_plan_mode: in an auto session, approve without the user review.
+      // The fold reads the committed log through agent.session.snapshotEvents()
+      // — since dsh 0.1.3 the Session class exposes no `.events` property, so
+      // `agent.session.events` is undefined and foldAutoPlan(undefined) threw
+      // "Cannot read properties of undefined (reading 'length')", bricking
+      // every plan-mode exit (auto-plan and /plan alike).
       [
         '\t\t\t\tconst interaction = ctx.get("userQuestions");',
-        '\t\t\t\tif (foldAutoPlan(agent.session.events)) {\n\t\t\t\t\tthis.pendingIntents.set(agent.session, { active: false, narrate: false });\n\t\t\t\t\treturn { approved: true };\n\t\t\t\t}\n\t\t\t\tconst interaction = ctx.get("userQuestions");',
+        '\t\t\t\tif (foldAutoPlan(agent.session.snapshotEvents())) {\n\t\t\t\t\tthis.pendingIntents.set(agent.session, { active: false, narrate: false });\n\t\t\t\t\treturn { approved: true };\n\t\t\t\t}\n\t\t\t\tconst interaction = ctx.get("userQuestions");',
       ],
       // /auto-plan command, registered beside /plan inside the same child.
       [
