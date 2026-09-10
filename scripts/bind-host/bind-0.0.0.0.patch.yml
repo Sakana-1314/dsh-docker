@@ -1,0 +1,15 @@
+# Bind the Web server to 0.0.0.0 (all interfaces) so Docker `-p 3080:3080` reaches it.
+#
+# dsh's CLI deliberately rejects `--host 0.0.0.0`, but the underlying webserver
+# schema accepts it as a deliberate network-exposure choice, so we apply it as a
+# cordis patch layer instead. A patch replaces only the targeted row's `config`,
+# so the row's `inject: [webStartup]` is preserved and the port expression keeps
+# working (--port flag / DSH_PORT env).
+#
+# SECURITY: binding 0.0.0.0 exposes the agent (which can execute code) to the
+# network. dsh has no auth layer -- front it with a reverse proxy/VPN or keep it
+# loopback-only (DSH_HOST=127.0.0.1) unless you know what you are doing.
+- id: webserver
+  config:
+    host: '0.0.0.0'
+    port: !!js ctx.webStartup.port ?? 3080
