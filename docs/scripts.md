@@ -1,0 +1,63 @@
+# 脚本清单
+
+本仓库所有 hook 脚本都放在 `scripts/` 下，**一个功能一个目录**。每个脚本**单一职责、自包含**：不引用 `scripts/` 下的任何其他脚本，需要共享的逻辑各自复制一份（刻意用少量重复换取零耦合）。新增、改名、删除脚本时，必须同步更新本文件。
+
+## 目录约定
+
+- `scripts/<功能>/`：一个功能一个目录，目录里放该功能的脚本与配置载荷，例如 `scripts/bind-host/bind-0.0.0.0.patch.yml`。
+- 构建时补丁脚本命名 `patch-<功能>.cjs`，由 `Dockerfile` **按固定顺序显式调用**（下表顺序即执行顺序，也决定产物顺序）；运行时脚本由入口脚本调用；CI 脚本命名 `*.sh`。
+- `config/` 目录已废弃：dsh 的配置补丁层作为载荷放回对应功能目录。
+
+## 构建时补丁脚本
+
+镜像构建阶段执行（`Dockerfile` 的 build stage），只改**编译产物**（各包 `lib/*.js`、`apps/web/dist`）与上游随包发布的预设 YAML，全部幂等。
+
+| 脚本 | 作用 | 注入对象 | 环境变量 |
+|---|---|---|---|
+| `scripts/universal-thinking/patch-universal-thinking.cjs` | 任何模型都暴露推理等级：无声明模型得到 Off/Medium/High/XHigh/Max 阶梯并默认 High，档位显示名统一 | `dsh-llm`、`dsh-llm-pi-ai` | 无 |
+| `scripts/llm-retry/patch-llm-retry.cjs` | 重试次数、退避参数、User-Agent 改为运行时环境变量，并支持追加可重试错误码 | `dsh-llm` | `DSH_RETRY`、`DSH_RETRY_INITIAL_DELAY_MS`、`DSH_RETRY_MAX_DELAY_MS`、`DSH_RETRY_JITTER_RATIO`、`DSH_RETRYABLE_CODES`、`UA` |
+| `scripts/stream-timeouts/patch-stream-timeouts.cjs` | 模型流式空闲超时改为可配（上游写死 5 分钟），覆盖 pi-ai 与 DeepSeek 两条路由 | `dsh-llm-pi-ai`、`dsh-llm-deepseek` | `DSH_STREAM_IDLE_TIMEOUT_MS` |
+| `scripts/sse-done/patch-sse-done.cjs` | 容忍网关省略 SSE `[DONE]` 结束帧（默认仍严格） | `dsh-llm-deepseek` | `DSH_SSE_REQUIRE_DONE` |
+| `scripts/token-meter/patch-token-meter.cjs` | Token 估算密度可配（上游写死 4 字符/token） | `dsh-token-meter` | `DSH_TOKEN_METER_CHARS_PER_TOKEN` |
+| `scripts/default-directory/patch-default-directory.cjs` | 目录选择器默认从容器工作目录起，而不是 `$HOME` | `dsh-host-directory-picker-browse` | `DSH_DEFAULT_DIRECTORY` |
+| `scripts/trust-fence/patch-trust-fence.cjs` | 信任栅栏逃生门：主机端 `/api` 校验、浏览器会话鉴权、浏览器端 loopback 判定，并把开关注入页面全局 | `dsh-client-connection`（host + browser）、`dsh-client-modules` | `DSH_DISABLE_TRUST_FENCE` |
+| `scripts/auto-plan/patch-auto-plan.cjs` | 新增 `/auto-plan` 命令：计划模式退出时自动批准，跳过评审确认卡片 | `dsh-plan-mode` | 无 |
+| `scripts/welcome-notice/patch-welcome-notice.cjs` | 默认跳过首次进入 GUI 的内测声明弹窗 | `dsh-client-modules`、`dsh-client-ui-settings-models` | `DSH_SHOW_WELCOME_NOTICE` |
+| `scripts/brand-rotation/patch-brand-rotation.cjs` | 侧边栏品牌名在给定文案间轮播（official 与通用 profile 两条渲染路径都覆盖） | `dsh-client-modules`、`dsh-client-ui-brand-official`、`dsh-client-ui-sidebar` | `DSH_BRAND_ROTATION`、`DSH_BRAND_ROTATION_MS` |
+| `scripts/page-title/patch-page-title.cjs` | 浏览器标签标题固定为「会话标题 - DeepSeek」，并固定构建产物的初始 `<title>` | `dsh-client-ui-layout`、`apps/web/dist/index.html` | 无 |
+| `scripts/mobile-model-seat/patch-mobile-model-seat.cjs` | 手机端隐藏输入框的模型名与思考等级，避免与读写策略按钮重叠 | `dsh-client-ui-model-selection` | 无 |
+| `scripts/mobile-session-log/patch-mobile-session-log.cjs` | 手机端隐藏会话头部的「下载 session log」按钮 | `dsh-session-log-export` | 无 |
+| `scripts/mobile-collapsed-layout/patch-mobile-collapsed-layout.cjs` | 手机端折叠侧边栏不占页面宽度（grid 强制 `0 / 1fr / 0`） | `dsh-client-ui-layout` | 无 |
+| `scripts/mobile-sidebar-corner/patch-mobile-sidebar-corner.cjs` | 手机端折叠侧边栏收起到左上角 36×36 角标，其余 rail 控件隐藏 | `dsh-client-ui-sidebar` | 无 |
+| `scripts/preset-prompts-zh/patch-preset-prompts-zh.cjs` | 内置智能体预设（standard / cordis / minimal / ptc）提示词中文化，并追加「全程使用中文思考和回复」 | `packages/preset/agent-presets/presets/*/agent.cordis.yml` | 无 |
+
+补丁条目格式：`[from, to, all?, marker?]`。`from` 默认必须在文件里恰好出现一次（`all` 为真时允许零次以上）；`marker` 默认取 `to`，命中即视为已应用并跳过；锚点缺失时脚本抛错，构建随即失败——上游升级导致结构变化时会响亮地提示需要更新补丁。
+
+## 运行时脚本
+
+| 脚本 | 作用 | 触发条件 |
+|---|---|---|
+| `scripts/container-entrypoint/docker-entrypoint.sh` | 容器入口编排：准备 DSH home、把环境变量翻译成 `dsh web` 参数、按需调用运行时补丁 | 容器启动（Dockerfile `ENTRYPOINT`） |
+| `scripts/plugin-fence/patch-plugin-fence.cjs` | 给已安装 profile 插件自带的信任栅栏注入同一个环境变量旁路（核心 `/api` 由 `trust-fence` 在构建时处理） | `DSH_DISABLE_TRUST_FENCE=1` |
+
+## 配置载荷（非可执行）
+
+| 文件 | 作用 | 使用方 |
+|---|---|---|
+| `scripts/bind-host/bind-0.0.0.0.patch.yml` | 让 Web 服务监听 `0.0.0.0`（dsh CLI 拒绝该值，因此作为 cordis patch 层应用），供 Docker 端口映射访问 | `docker-entrypoint.sh` 的 `--patch` 参数 |
+
+## CI 脚本
+
+| 脚本 | 作用 | 调用方 |
+|---|---|---|
+| `scripts/dsh-version/resolve-version.sh` | 把显式输入或上游最新 `dsh-v*` 标签解析成 `ref` / `version` 两行输出 | `.github/workflows/build.yml`「解析 dsh 版本」；`Dockerfile` 构建阶段解析 `DSH_REF` |
+| `scripts/dsh-version/sync-version-file.sh` | 把 `VERSION` 同步到目标版本：有变化就写入、提交并推送，输出 `changed=true/false` | `.github/workflows/build.yml`「同步 VERSION 文件」 |
+
+## 新增脚本约定
+
+1. **单一职责**：一个脚本只做一件事（一个增强 / 一次解析 / 一次同步），不要把顺手也要改的东西塞进来。
+2. **自包含**：不得 `require` / `source` `scripts/` 下的其他脚本；共享的辅助逻辑各自复制。
+3. **失败要响亮**：锚点、类名、结构匹配不上时直接报错退出，绝不静默跳过。
+4. **幂等**：重复运行结果不变；需要时用 `marker` 明确"已应用"的判据。
+5. **登记**：新增 / 改名 / 删除脚本同步更新本文件；构建时脚本还要在 `Dockerfile` 的顺序列表里登记。
+6. **只碰编译产物**：绝不手改上游被 git 跟踪的源码；构建时补丁只能写各包 `lib/*.js`、`apps/web/dist`，或上游随包发布、运行时读取的预设 YAML。
