@@ -7,8 +7,8 @@
 # 单一职责、自包含：本脚本不引用 scripts/ 下的任何其他脚本。
 #
 # 用法：sync-version-file.sh <version>
-# 输出（stdout，可直接追加到 $GITHUB_OUTPUT）：
-#   changed=true|false
+# 输出约定：stdout **只**打印 `changed=true|false`（调用方直接追加到 $GITHUB_OUTPUT），
+# 一切给人看的说明都走 stderr——git 的输出尤其不能进 stdout。
 set -e
 
 version="${1:-}"
@@ -21,7 +21,7 @@ cd "$(git rev-parse --show-toplevel)"
 
 current="$(cat VERSION 2>/dev/null || true)"
 if [ "$version" = "$current" ]; then
-  echo "VERSION already at $version"
+  echo "VERSION already at $version" >&2
   echo "changed=false"
   exit 0
 fi
@@ -30,6 +30,7 @@ printf '%s\n' "$version" > VERSION
 git add VERSION
 git -c user.name='github-actions[bot]' \
     -c user.email='github-actions[bot]@users.noreply.github.com' \
-    commit -m "build: bump dsh to $version"
-git push origin "HEAD:${GITHUB_REF_NAME:-$(git rev-parse --abbrev-ref HEAD)}"
+    commit -q -m "build: bump dsh to $version" >&2
+git push -q origin "HEAD:${GITHUB_REF_NAME:-$(git rev-parse --abbrev-ref HEAD)}" >&2
+echo "VERSION $current -> $version (committed and pushed)" >&2
 echo "changed=true"
