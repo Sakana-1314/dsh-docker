@@ -38,7 +38,7 @@ WORKDIR /src
 RUN pnpm install --frozen-lockfile
 RUN pnpm run build:lib && pnpm run build:web
 
-# Build-time patches: exactly one single-purpose script per enhancement, each
+# Build-time patches: one single-purpose script per deployment enhancement, each
 # self-contained (no cross-script imports) -- see docs/scripts.md for the
 # manifest. The list below is the execution order and is kept explicit so the
 # produced artifacts stay reproducible; each script writes only compiled
@@ -48,20 +48,12 @@ RUN set -e; \
     for script in \
       /tmp/dsh-scripts/universal-thinking/patch-universal-thinking.cjs \
       /tmp/dsh-scripts/llm-retry/patch-llm-retry.cjs \
-      /tmp/dsh-scripts/stream-timeouts/patch-stream-timeouts.cjs \
-      /tmp/dsh-scripts/sse-done/patch-sse-done.cjs \
-      /tmp/dsh-scripts/token-meter/patch-token-meter.cjs \
       /tmp/dsh-scripts/default-directory/patch-default-directory.cjs \
       /tmp/dsh-scripts/trust-fence/patch-trust-fence.cjs \
       /tmp/dsh-scripts/auto-plan/patch-auto-plan.cjs \
       /tmp/dsh-scripts/welcome-notice/patch-welcome-notice.cjs \
       /tmp/dsh-scripts/brand-rotation/patch-brand-rotation.cjs \
-      /tmp/dsh-scripts/page-title/patch-page-title.cjs \
-      /tmp/dsh-scripts/mobile-model-seat/patch-mobile-model-seat.cjs \
-      /tmp/dsh-scripts/mobile-session-log/patch-mobile-session-log.cjs \
-      /tmp/dsh-scripts/mobile-collapsed-layout/patch-mobile-collapsed-layout.cjs \
-      /tmp/dsh-scripts/mobile-sidebar-corner/patch-mobile-sidebar-corner.cjs \
-      /tmp/dsh-scripts/preset-prompts-zh/patch-preset-prompts-zh.cjs \
+      /tmp/dsh-scripts/mobile-ui/patch-mobile-ui.cjs \
     ; do echo "==> ${script}"; node "$script" /src; done; \
     rm -rf /tmp/dsh-scripts
 
