@@ -78,9 +78,6 @@ docker build --build-arg DSH_REF=dsh-v0.1.0-rc.7 -t deepseek-harness:local .
 | `DSH_RETRY_MAX_DELAY_MS` | 重试退避上限（毫秒） | `10000` |
 | `DSH_RETRY_JITTER_RATIO` | 重试退避抖动比例（0–1） | `0.1` |
 | `DSH_RETRYABLE_CODES` | 追加可重试的错误码（逗号分隔），如 `PI_AI_ERROR,HTTP_408`。网关的自定义报错文案若被归入不可重试的兜底错误码，加进来即可参与同一套退避重试 | 无 |
-| `DSH_STREAM_IDLE_TIMEOUT_MS` | 模型流式空闲超时（毫秒）：流多久没有新数据就中断本次请求。慢网关 / 深度思考期间无 keepalive 帧的模型可调大 | `300000`（5 分钟） |
-| `DSH_SSE_REQUIRE_DONE` | 设为 `0` 容忍网关省略 SSE `[DONE]` 结束帧（详见下文「其他构建时增强」） | 严格 |
-| `DSH_TOKEN_METER_CHARS_PER_TOKEN` | Token 估算字符密度（详见下文「其他构建时增强」） | `4` |
 | `UA` | 覆盖请求模型供应商的 User-Agent | `deepseek-harness/<版本> (+url)` |
 | `DSH_HOST` | `0.0.0.0` 或 `127.0.0.1`（仅本机） | `0.0.0.0` |
 | `DSH_TRUSTED_HOSTS` | 信任的访问地址（空格/逗号分隔）：局域网 IP、域名、反向代理地址。`/api` 与插件路由（`/sidebar/*`）都会放行 | 无（容器自身的局域网 IP 自动受信） |
@@ -99,32 +96,24 @@ docker build --build-arg DSH_REF=dsh-v0.1.0-rc.7 -t deepseek-harness:local .
 
 该增强通过 `scripts/universal-thinking/patch-universal-thinking.cjs` 在构建时注入 dsh 的 LLM 核心与 pi-ai 适配器，无需额外配置。
 
-### 四种内置智能体模式的提示词已翻译为中文
-
-镜像构建时会把 dsh 自带的智能体预设（`standard` / `cordis` / `minimal` / `ptc`，0.1.2-alpha.2 起上游以 `ptc` 取代了旧的 `code` 预设）里面向模型的英文提示词替换为中文，包括：
-
-- 各预设的角色设定（persona），并额外追加一句「除非用户明确要求其他语言，全程使用中文思考和回复」；
-- 计划模式（plan mode）的规则段落（`standard` / `cordis` / `ptc` 三个预设）；
-- `minimal` 预设中持久化 shell 工具（bash / pwsh）的描述。
-
-这样基于这些预设运行的会话拿到的是中文系统提示词，模型会更倾向用中文思考与回复。`{{model}}` / `{{cwd}}` 等占位符保持原样，YAML 结构逐段保留；补丁幂等，可重复执行。该翻译同样通过 `scripts/preset-prompts-zh/patch-preset-prompts-zh.cjs` 在构建时完成，无需额外配置。
-
 ### `/auto-plan` 命令：计划退出自动批准
 
 镜像通过 `scripts/auto-plan/patch-auto-plan.cjs` 为 `dsh-plan-mode` 注入 `/auto-plan` 命令：与 `/plan` 一样进入计划模式（`plan:policy` 引导、模型探索并制定计划），但当模型调用 `exit_plan_mode` 时**跳过用户评审确认卡片直接批准**，退出计划模式并继续执行计划——省去一次手动确认。`/auto-plan off` 与 `/plan off` 均可退出；auto 标记由会话日志折叠（`command/run` 记录），重启 / fork 后可恢复。普通 `/plan` 的行为完全不变（仍弹评审确认），在已激活计划会话中用 `/auto-plan` 或 `/plan` 可在两种模式间切换。该增强同样通过 `scripts/auto-plan/patch-auto-plan.cjs` 在构建时完成，无需额外配置。
 
-### 侧边栏品牌名称轮播与固定页面标题
+### 侧边栏品牌名称轮播
 
-镜像通过 `scripts/brand-rotation/patch-brand-rotation.cjs` 与 `scripts/page-title/patch-page-title.cjs` 对 GUI 做了两处品牌定制：
+镜像通过 `scripts/brand-rotation/patch-brand-rotation.cjs` 把左上角 logo 右侧的品牌名从固定字标改为文本，在 `DeepSeek Harness` 与 `探索未至之境` 之间轮播（默认每 4 秒切换，带淡入淡出）。文案与间隔可用 `DSH_BRAND_ROTATION`（`|` 分隔）/ `DSH_BRAND_ROTATION_MS` 环境变量调整；official 与通用（非 official）构建 profile 两条渲染路径都已覆盖，渲染在浏览器端完成，改环境变量后刷新页面即生效。
 
-- **侧边栏品牌名称轮播**：左上角 logo 右侧的品牌名从固定字标改为文本，在 `DeepSeek Harness` 与 `探索未至之境` 之间轮播（默认每 4 秒切换，带淡入淡出）。文案与间隔可用 `DSH_BRAND_ROTATION`（`|` 分隔）/ `DSH_BRAND_ROTATION_MS` 环境变量调整；渲染在浏览器端完成，改环境变量后刷新页面即生效。
-- **固定页面标题格式**：浏览器标签页标题固定为「会话标题 - DeepSeek」（未选择会话时显示 `DeepSeek`），不再跟随上游的 `DSH_CLIENT_TITLE` 构建值（`DeepSeek Harness` / `DSH Local Build`）；初始 HTML `<title>` 同步固定为 `DeepSeek`，避免刷新瞬间闪旧标题。
+### 手机端 UI 优化
 
-两处都通过构建时补丁注入，无需改上游源码，升级上游版本后重新构建镜像即自动跟随。
+镜像通过 `scripts/mobile-ui/patch-mobile-ui.cjs`（一个脚本、四条规则）优化窄视口下的 GUI：
 
-### 移动端侧边栏折叠后收起到左上角角标
+- **隐藏输入框里的模型名与思考等级**（视口 < 560px）：该座位在窄屏会与同一行的读写策略按钮重叠；
+- **隐藏会话头部的 session log 导出入口**（视口 < 560px）：0.1.5-rc.1 起上游把它从独立下载按钮改成「更多操作」菜单，两个版本的类名都兼容；
+- **折叠后的侧边栏不占页面宽度**（视口 < 1024px，对应上游 `SIDEBAR_AUTO_COLLAPSE`）：折叠时把三列 grid 强制成 `0 / 1fr / 0`（`!important` 压过组件内联样式），中心内容占满整页；
+- **折叠后的侧边栏收起到左上角角标**（视口 < 1024px）：36×36 圆角角标，其余 rail 控件（新建会话、工作区、页脚）隐藏，角标直接显示展开图标（触屏没有 hover）；点击角标展开，再次折叠即回到角标。
 
-镜像通过 `scripts/mobile-collapsed-layout/patch-mobile-collapsed-layout.cjs` 与 `scripts/mobile-sidebar-corner/patch-mobile-sidebar-corner.cjs` 对移动端（视口 < 1024px）侧边栏做了布局定制：折叠后不再以 56px 全高竖栏占据页面左侧一条宽度，而是**收起到左上角的角标按钮**（36×36 圆角，图标为展开面板图标），中心内容占满整页宽度；点击角标展开侧边栏，再次折叠即回到角标。桌面端（≥1024px）行为与上游一致（仍为 56px rail）。改动由 `scripts/mobile-collapsed-layout/patch-mobile-collapsed-layout.cjs` 与 `scripts/mobile-sidebar-corner/patch-mobile-sidebar-corner.cjs` 分别对 `dsh-client-ui-layout`（折叠时 grid 强制 `0 / 1fr / 0`）与 `dsh-client-ui-sidebar`（折叠 rail 变固定角标）两个客户端包的编译产物注入 CSS 媒体查询实现，无需改上游源码。
+后两条共同构成一条规范：折叠后不占页面宽度。桌面端（≥1024px）行为与上游一致（56px rail）。所有隐藏类名与选择器都从各包自身 css map 解析（哈希无关），无需改上游源码。
 
 ### 启动时自动初始化 profiles 目录
 
@@ -137,9 +126,3 @@ docker build --build-arg DSH_REF=dsh-v0.1.0-rc.7 -t deepseek-harness:local .
 - **认证**：设置 `ANTHROPIC_API_KEY` 环境变量即可免登录使用；也可以把宿主机已有的 `~/.claude` 目录挂载进容器（`-v ~/.claude:/root/.claude`）复用登录态。认证与配置存放在 `/root/.claude`、`/root/.claude.json`，与 `/root/.dsh` 挂载互不影响。
 - **版本更新**：npm 全局安装不自动更新（镜像里的 `DISABLE_AUTOUPDATER=1` 保持关闭），版本随重新构建镜像更新；容器内可随时用 `claude update` 手动升级。
 - **验证**：构建时执行 `claude --version` 确认安装成功。
-
-### 其他构建时增强
-
-- **SSE `[DONE]` 容错**：部分 OpenAI 兼容网关代理的非 OpenAI 后端会在没有字面 `[DONE]` 帧的情况下干净地结束流式响应，上游会将其判定为 `STREAM_CLOSED` 终态错误；设置 `DSH_SSE_REQUIRE_DONE=0` 可关闭上游严格校验（默认保持严格）。
-- **Token 估算密度可配**：上游把 token 估算硬编码为 4 字符/token；代码密集或中文对话、非 DeepSeek 模型在该密度下误差很大。设置 `DSH_TOKEN_METER_CHARS_PER_TOKEN` 可调整（调大则自动压缩更晚触发，调小则更早）。
-
