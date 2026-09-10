@@ -83,16 +83,37 @@ const targets = [
   {
     pkg: '@deepseek-ai/dsh-client-ui-layout',
     file: 'lib/client.js',
-    replacements: [
-      [
-        'function DocumentTitle({ title, productTitle }) {\n\t\t\t(0, react.useEffect)(() => {',
-        'function DocumentTitle({ title, productTitle }) {\n\t\t\tproductTitle = "DeepSeek";\n\t\t\t(0, react.useEffect)(() => {',
-      ],
-      [
-        'document.title = title === void 0 ? productTitle : `${title} — ${productTitle}`;',
-        'document.title = title === void 0 ? productTitle : `${title} - ${productTitle}`;',
-      ],
-    ],
+    // DocumentTitle 的 props 会随上游版本变化（0.1.5-rc.1 起是
+    // { useSessions, usePanelInfo, productTitle }），所以用正则锚定函数签名行、在函数体首行覆盖
+    // productTitle，而不是把整行签名写进锚点；props 里必须仍有 productTitle，否则报错退出。
+    custom(entry, src, log) {
+      const display = path.relative(root, entry)
+      if (src.includes('productTitle = "DeepSeek";')) {
+        log('already applied in ' + display)
+      } else {
+        const signature = /function DocumentTitle\(\{([^}]*)\}\) \{\n/
+        const hit = signature.exec(src)
+        if (hit === null) {
+          throw new Error(NAME + ': DocumentTitle signature not found in ' + display)
+        }
+        if (!hit[1].includes('productTitle')) {
+          throw new Error(NAME + ': DocumentTitle no longer takes a productTitle prop in ' + display)
+        }
+        src = src.replace(signature, hit[0] + '\t\t\tproductTitle = "DeepSeek";\n')
+      }
+      // 分隔符从全角破折号改成连字符，保持「会话标题 - DeepSeek」。
+      const dashFrom = 'document.title = title === void 0 ? productTitle : `${title} — ${productTitle}`;'
+      const dashTo = 'document.title = title === void 0 ? productTitle : `${title} - ${productTitle}`;'
+      if (src.includes(dashTo)) {
+        log('title separator already a hyphen in ' + display)
+        return src
+      }
+      const count = src.split(dashFrom).length - 1
+      if (count !== 1) {
+        throw new Error(NAME + ': expected exactly one document.title assignment (found ' + count + ') in ' + display)
+      }
+      return src.replace(dashFrom, dashTo)
+    },
   },
 ]
 for (const { pkg, file, replacements, custom } of targets) {

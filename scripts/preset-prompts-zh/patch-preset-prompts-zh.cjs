@@ -64,19 +64,26 @@ const PLAN_MODE_PARAGRAPHS = [
   ],
 ]
 
-// Persona shared by the standard and code presets (folded single-line scalar).
+// Persona shared by the standard and ptc presets. Since 0.1.5-rc.1 the persona row
+// splits the prompt into `prefix:` and `suffix:` block scalars, so the model-facing
+// sentence and the cwd sentence are translated separately.
 const CODING_PERSONA = [
   [
-    'You are a coding agent powered by the {{model}} model. Your working directory is {{cwd}}.',
-    '你是编程智能体（coding agent），由 {{model}} 模型驱动。你的工作目录是 {{cwd}}。除非用户明确要求使用其他语言，否则请全程使用中文思考和回复。',
+    '      You are a coding agent powered by the {{model}} model.',
+    '      你是编程智能体（coding agent），由 {{model}} 模型驱动。除非用户明确要求使用其他语言，否则请全程使用中文思考和回复。',
   ],
+]
+
+// The cwd sentence, carried by the persona row's own `suffix:` key (standard / ptc / cordis).
+const CWD_SUFFIX = [
+  ['    suffix: Your working directory is {{cwd}}.', '    suffix: 你的工作目录是 {{cwd}}。'],
 ]
 
 // The cordis preset's longer persona (literal block, one pair per paragraph).
 const CORDIS_PERSONA_PARAGRAPHS = [
   [
-    'You are a coding agent powered by the {{model}} model, running on the DeepSeek Harness. Your working directory is {{cwd}}.',
-    '你是编程智能体（coding agent），由 {{model}} 模型驱动，运行在 DeepSeek Harness 之上。你的工作目录是 {{cwd}}。除非用户明确要求使用其他语言，否则请全程使用中文思考和回复。',
+    '      You are a coding agent powered by the {{model}} model, running on the DeepSeek Harness.',
+    '      你是编程智能体（coding agent），由 {{model}} 模型驱动，运行在 DeepSeek Harness 之上。除非用户明确要求使用其他语言，否则请全程使用中文思考和回复。',
   ],
   [
     'You can read and modify the harness you run on. Its composition is Cordis: every capability is a plugin row in a `cordis.yml`, and an agent preset is one such file mounted for a single session.',
@@ -130,8 +137,8 @@ const MINIMAL_BASH_DESCRIPTION_LINES = [
   ],
   ["* You don't have access to the internet via this tool.", '* 通过此工具无法访问互联网。', true],
   [
-    '* You do have access to a mirror of common linux and python packages via apt and pip.',
-    '* 可以通过 apt 和 pip 使用常用 Linux 与 Python 软件包的镜像源。',
+    '* Network access depends on the task environment. Prefer configured mirrors/proxies when they are available.',
+    '* 网络访问取决于任务环境；有可用的镜像源或代理时请优先使用。',
     true,
   ],
   [
@@ -157,20 +164,19 @@ const MINIMAL_BASH_DESCRIPTION_LINES = [
 ]
 const targets = [
   {
-    // Since 0.1.2-alpha.2 the built-in presets live in
-    // packages/preset/agent-presets/presets/<name>/agent.cordis.yml; the
-    // former `code` preset was removed upstream (replaced by `ptc`, which
-    // shares the standard persona and plan-mode paragraphs).
+    // The built-in presets live in packages/preset/agent-presets/presets/<name>/agent.cordis.yml;
+    // the former `code` preset was removed upstream (replaced by `ptc`, which shares the
+    // standard persona and plan-mode paragraphs).
     file: 'packages/preset/agent-presets/presets/standard/agent.cordis.yml',
-    replacements: [...CODING_PERSONA, ...PLAN_MODE_PARAGRAPHS],
+    replacements: [...CODING_PERSONA, ...CWD_SUFFIX, ...PLAN_MODE_PARAGRAPHS],
   },
   {
     file: 'packages/preset/agent-presets/presets/ptc/agent.cordis.yml',
-    replacements: [...CODING_PERSONA, ...PLAN_MODE_PARAGRAPHS],
+    replacements: [...CODING_PERSONA, ...CWD_SUFFIX, ...PLAN_MODE_PARAGRAPHS],
   },
   {
     file: 'packages/preset/agent-presets/presets/cordis/agent.cordis.yml',
-    replacements: [...CORDIS_PERSONA_PARAGRAPHS, ...PLAN_MODE_PARAGRAPHS],
+    replacements: [...CORDIS_PERSONA_PARAGRAPHS, ...CWD_SUFFIX, ...PLAN_MODE_PARAGRAPHS],
   },
   {
     file: 'packages/preset/agent-presets/presets/minimal/agent.cordis.yml',

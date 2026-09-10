@@ -80,8 +80,12 @@ function applyReplacements(display, src, replacements) {
 * inlines the component's CSS module as a string with content-hashed class
 * names; this appends a @media (max-width:560px) rule hiding the given class
 * keys (resolved from the bundle's own css map, so hashes never break it).
+* The key names themselves drift across upstream versions, so they are passed
+* as accepted aliases: every key present in the css map is hidden, and at least
+* one must be present (otherwise the control is gone and this patched must be
+* updated).
 * @param pkg - the workspace package to patch (its lib/client.js).
-* @param classKeys - css-map keys whose elements hide on phones.
+* @param classKeys - accepted css-map keys whose elements hide on phones.
 */
 function hideOnMobile(pkg, classKeys) {
   return {
@@ -91,16 +95,14 @@ function hideOnMobile(pkg, classKeys) {
       const cssMatch = src.match(/const css = ("[^"]*");/)
       if (!cssMatch) throw new Error(`${NAME}: ${pkg} css const not found`)
       const mapMatch = src.match(/module_css_default = \{([\s\S]*?)\};/)
-      const classes = (mapMatch?.[1] ?? '')
-        .match(new RegExp(`"(${classKeys.join('|')})": "([^"]+)"`, 'g')) ?? []
-      const entries = new Map(classes.map((m) => {
-        const hit = m.match(/"([^"]+)": "([^"]+)"/)
-        return [hit[1], hit[2]]
-      }))
-      if (classKeys.some((key) => !entries.has(key))) {
-        throw new Error(`${NAME}: ${pkg} missing css classes ${classKeys.join(',')} in the css map`)
+      const entries = new Map(
+        [...(mapMatch?.[1] ?? '').matchAll(/"([^"]+)": "([^"]+)"/g)].map((m) => [m[1], m[2]]),
+      )
+      const keys = classKeys.filter((key) => entries.has(key))
+      if (keys.length === 0) {
+        throw new Error(`${NAME}: ${pkg} has none of the css classes ${classKeys.join(',')} in the css map`)
       }
-      const suffix = `@media (max-width:560px){${classKeys.map((key) => `.${entries.get(key)}`).join(',')}{display:none}}`
+      const suffix = `@media (max-width:560px){${keys.map((key) => `.${entries.get(key)}`).join(',')}{display:none}}`
       if (cssMatch[1].includes(suffix)) {
         log(`already applied in ${path.relative(root, entry)}`)
         return src
@@ -112,8 +114,11 @@ function hideOnMobile(pkg, classKeys) {
 }
 const targets = [
   {
-    // Mobile: hide the session-log download button in the session header.
-    ...hideOnMobile('@deepseek-ai/dsh-session-log-export', ['sessionLogButton']),
+    // Mobile: hide the session-log download affordance in the session header.
+    // 0.1.5-rc.1 起它从独立的下载按钮变成「更多操作」菜单（唯一的条目就是下载日志），
+    // css map 的类名键也从 sessionLogButton 变成 moreButton；两者都指向同一个头部控件，
+    // 所以这里同时兼容两个键名，命中哪个就隐藏哪个。
+    ...hideOnMobile('@deepseek-ai/dsh-session-log-export', ['moreButton', 'sessionLogButton']),
   },
 ]
 for (const { pkg, file, replacements, custom } of targets) {
