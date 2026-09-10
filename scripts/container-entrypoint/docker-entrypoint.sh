@@ -1,4 +1,7 @@
 #!/bin/sh
+# 容器入口：唯一的启动编排脚本（Dockerfile 的 ENTRYPOINT）。
+# 单一职责是「编排」，不做具体补丁：准备 DSH home、把环境变量翻译成 dsh web 的启动参数、
+# 必要时调用运行时补丁脚本。所有补丁逻辑都在 scripts/ 下的单一职责脚本里，清单见 docs/scripts.md。
 set -e
 
 # A bind-mounted DSH_HOME may start empty. Create the profile root before
@@ -28,7 +31,7 @@ fi
 
 # When the /api trust fence is disabled, apply the same furlough to the
 # fences third-party plugins carry inside their own compiled code (e.g.
-# dsh-better-sidebar's /sidebar routes) — see patch-plugin-fence.cjs.
+# dsh-better-sidebar's /sidebar routes) — see scripts/plugin-fence/patch-plugin-fence.cjs.
 if [ "${DSH_DISABLE_TRUST_FENCE:-}" = "1" ]; then
   node /usr/local/bin/patch-plugin-fence.cjs
 fi

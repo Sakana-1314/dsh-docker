@@ -14,15 +14,14 @@ RUN apt-get update \
 
 # dsh source to build: a git ref (release tag `dsh-v*`, branch, or commit) of
 # https://github.com/deepseek-ai/deepseek-harness. `latest` (default) resolves
-# the newest `dsh-v*` release tag at build time.
+# the newest `dsh-v*` release tag through the shared version resolver (the same
+# single-purpose script the CI workflow uses).
 ARG DSH_REF=latest
-RUN if [ "$DSH_REF" = "latest" ]; then \
-      REF="$(git ls-remote --tags https://github.com/deepseek-ai/deepseek-harness.git 'refs/tags/dsh-v*' | sed 's|.*refs/tags/||' | grep -v '\^{}' | sort -V | tail -1)"; \
-      echo "dsh: resolved latest release tag $REF"; \
-    else \
-      REF="$DSH_REF"; \
-    fi \
+COPY scripts/dsh-version/resolve-version.sh /tmp/resolve-version.sh
+RUN REF="$(sh /tmp/resolve-version.sh "$DSH_REF" | sed -n 's/^ref=//p')" \
     && test -n "$REF" \
+    && echo "dsh: building git ref $REF" \
+    && rm -f /tmp/resolve-version.sh \
     && git init -q /src \
     && git -C /src remote add origin https://github.com/deepseek-ai/deepseek-harness.git \
     && git -C /src fetch -q --depth 1 origin "$REF" \
@@ -39,11 +38,32 @@ WORKDIR /src
 RUN pnpm install --frozen-lockfile
 RUN pnpm run build:lib && pnpm run build:web
 
-# Patch the compiled LLM core + trust fence + default directory + universal
-# thinking levels (env-driven; see patch-dsh.cjs).
-COPY patch-dsh.cjs /tmp/patch-dsh.cjs
-RUN node /tmp/patch-dsh.cjs /src \
-    && rm /tmp/patch-dsh.cjs
+# Build-time patches: exactly one single-purpose script per enhancement, each
+# self-contained (no cross-script imports) -- see docs/scripts.md for the
+# manifest. The list below is the execution order and is kept explicit so the
+# produced artifacts stay reproducible; each script writes only compiled
+# artifacts and fails the build loudly when an upstream anchor disappears.
+COPY scripts/ /tmp/dsh-scripts/
+RUN set -e; \
+    for script in \
+      /tmp/dsh-scripts/universal-thinking/patch-universal-thinking.cjs \
+      /tmp/dsh-scripts/llm-retry/patch-llm-retry.cjs \
+      /tmp/dsh-scripts/stream-timeouts/patch-stream-timeouts.cjs \
+      /tmp/dsh-scripts/sse-done/patch-sse-done.cjs \
+      /tmp/dsh-scripts/token-meter/patch-token-meter.cjs \
+      /tmp/dsh-scripts/default-directory/patch-default-directory.cjs \
+      /tmp/dsh-scripts/trust-fence/patch-trust-fence.cjs \
+      /tmp/dsh-scripts/auto-plan/patch-auto-plan.cjs \
+      /tmp/dsh-scripts/welcome-notice/patch-welcome-notice.cjs \
+      /tmp/dsh-scripts/brand-rotation/patch-brand-rotation.cjs \
+      /tmp/dsh-scripts/page-title/patch-page-title.cjs \
+      /tmp/dsh-scripts/mobile-model-seat/patch-mobile-model-seat.cjs \
+      /tmp/dsh-scripts/mobile-session-log/patch-mobile-session-log.cjs \
+      /tmp/dsh-scripts/mobile-collapsed-layout/patch-mobile-collapsed-layout.cjs \
+      /tmp/dsh-scripts/mobile-sidebar-corner/patch-mobile-sidebar-corner.cjs \
+      /tmp/dsh-scripts/preset-prompts-zh/patch-preset-prompts-zh.cjs \
+    ; do echo "==> ${script}"; node "$script" /src; done; \
+    rm -rf /tmp/dsh-scripts
 
 # ---- runtime stage ----
 FROM node:${NODE_VERSION}-${DEBIAN_VARIANT}-slim
@@ -101,11 +121,12 @@ RUN ln -s /opt/dsh/apps/cli/lib/bin.js /usr/local/bin/dsh \
     && npm cache clean --force \
     && dsh --version
 
-# Patch overlay (binds the Web server to 0.0.0.0) + entrypoint.
-COPY config/bind-0.0.0.0.patch.yml /etc/dsh/bind-0.0.0.0.patch.yml
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-# Runtime plugin-fence patch (runs at container start when DSH_DISABLE_TRUST_FENCE=1).
-COPY patch-plugin-fence.cjs /usr/local/bin/patch-plugin-fence.cjs
+# Overlay config payloads + runtime scripts (see docs/scripts.md): the config
+# payload binds the Web server to 0.0.0.0, the entrypoint is the container's
+# startup orchestrator, and the plugin-fence patch is its runtime hook.
+COPY scripts/bind-host/bind-0.0.0.0.patch.yml /etc/dsh/bind-0.0.0.0.patch.yml
+COPY scripts/container-entrypoint/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY scripts/plugin-fence/patch-plugin-fence.cjs /usr/local/bin/patch-plugin-fence.cjs
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENV DSH_HOME=/root/.dsh \

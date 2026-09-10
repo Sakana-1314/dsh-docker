@@ -1,16 +1,19 @@
 'use strict'
 // Runtime patch for the browser-trust fence inside INSTALLED PROFILE PLUGINS.
+// 运行时脚本：容器启动时由 scripts/container-entrypoint/docker-entrypoint.sh 调用。
+// 单一职责、自包含：本脚本不引用 scripts/ 下的任何其他脚本。清单见 docs/scripts.md。
 //
 // dsh's core /api fence can be switched off with DSH_DISABLE_TRUST_FENCE=1
-// (see patch-dsh.cjs, applied at image build time). Third-party web plugins —
-// dsh-better-sidebar and other bundles that mount their own /sidebar routes —
-// copy the same fence into their own compiled code, but several of them do
-// not read that environment variable, so on remote/LAN access they keep
-// answering 403 even when the core /api has been opened up.
+// (see scripts/trust-fence/patch-trust-fence.cjs, applied at image build
+// time). Third-party web plugins — dsh-better-sidebar and other bundles that
+// mount their own /sidebar routes — copy the same fence into their own
+// compiled code, but several of them do not read that environment variable,
+// so on remote/LAN access they keep answering 403 even when the core /api has
+// been opened up.
 //
-// This script is the runtime counterpart of patch-dsh.cjs: profile plugins
-// live in the DSH home volume (/root/.dsh/profiles/<name>/node_modules), so
-// they can only be patched at container start, not at image build time. When
+// This script is the runtime counterpart: profile plugins live in the DSH home
+// volume (/root/.dsh/profiles/<name>/node_modules), so they can only be
+// patched at container start, not at image build time. When
 // DSH_DISABLE_TRUST_FENCE=1 is set, the entrypoint runs this script and
 // injects the same env-var bypass into every installed plugin whose compiled
 // code contains the trust-fence signature, so the fence is disabled
@@ -36,7 +39,8 @@ const profilesDir = path.join(DSH_HOME, 'profiles')
 
 // Exact compiled signature of the fence dsh plugins copy (dsh-better-sidebar
 // has it verbatim in lib/index.js). We inject the same first-line bypass that
-// patch-dsh.cjs injects into the core, so the two fences behave identically.
+// scripts/trust-fence/patch-trust-fence.cjs injects into the core, so the two
+// fences behave identically.
 const NEEDLE = 'function isTrustedApiRequest(request, trustedHosts) {'
 const BYPASS_PREFIX =
   '\n\tif (process.env.DSH_DISABLE_TRUST_FENCE === "1") return true;'
