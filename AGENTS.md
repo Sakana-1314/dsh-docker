@@ -23,7 +23,7 @@
 ## 3. 补丁应用与验证流程（每次改动必循）
 
 1. **改对应功能的脚本**：`scripts/<功能>/patch-<功能>.cjs`。简单串替换用 `replacements` 条目 `[from, to, all?, marker?]`（`from` 默认需唯一，`all` 为真时允许零次以上；`marker` 默认取 `to`，命中即视为已应用）；CSS / 结构注入用 `custom`，参照既有 `hideOnMobile` / `appendCssSuffix` helper。**同一个文件被多个脚本处理时，各自必须用 `marker` 判定「已应用」**，保证幂等且与执行顺序无关。
-2. **应用到验证 checkout**：`node scripts/<功能>/patch-<功能>.cjs /opt/dsh`（脚本自带 `node --check` 语法校验）；再跑一次确认只输出 `already applied`、文件零改动。
+2. **应用到验证 checkout**：`node scripts/<功能>/patch-<功能>.cjs /opt/dsh`（脚本自带 `node --check` 语法校验）；再跑一次确认只输出 `already applied`、文件零改动。**锚点跟随 `VERSION` 指向的上游版本**：本机 `/opt/dsh` 可能还是旧版本，已经为更新版本改写锚点的脚本（例如 `preset-prompts-zh` 跟随上游预设的 persona 结构）在旧 checkout 上会响亮报错——那是版本错位，不是补丁坏了。为更新版本改锚点时，用同版本产物验证：`npm pack @deepseek-ai/<pkg>@<version>` 取各包编译产物、从上游 tag 取预设 YAML，拼一个合成工作区（`packages/<tier>/<name>/package.json` + `lib/*.js`）跑一遍最省事；最终以 CI 构建为准。
 3. **在 GUI 上验证**：运行中的 GUI（`http://127.0.0.1:3080`）直接从各包 `lib/client.js` 伺服 `/plugins/@deepseek-ai/<pkg>/client.js`（内容哈希 rev + `no-cache`），**改完刷新页面即生效，无需重建 web**。用 playwright（headless chromium，`/root/.npm/_npx/*/node_modules/playwright`）在目标视口做 DOM/计算样式断言。
 4. **幂等复检**：再次运行该脚本，确认文件内容不再变化。
 
@@ -33,7 +33,7 @@
 
 - **侧边栏折叠后收到左上角，不占据页面宽度**：移动端（视口 < 1024px，对应上游 `SIDEBAR_AUTO_COLLAPSE`）侧边栏折叠后，不得以 56px 全高竖栏占据页面左侧一条宽度；应**收起到左上角的角标按钮**（36×36，圆角，图标为展开面板图标），中心内容占满整页宽度。桌面端（≥1024px）行为与上游一致（56px rail）。实现见 `scripts/mobile-collapsed-layout/patch-mobile-collapsed-layout.cjs`（折叠时 grid 强制 `0 / 1fr / 0`，`!important` 覆盖内联样式）与 `scripts/mobile-sidebar-corner/patch-mobile-sidebar-corner.cjs`（折叠 rail 变固定角标、隐藏其余 rail 控件）。
 - **手机端隐藏模型名称与思考等级**：避免与读写策略按钮重叠（`scripts/mobile-model-seat/patch-mobile-model-seat.cjs`）。
-- **手机端隐藏「下载 session log」按钮**（`scripts/mobile-session-log/patch-mobile-session-log.cjs`）。
+- **手机端隐藏 session log 导出入口**（`scripts/mobile-session-log/patch-mobile-session-log.cjs`）：0.1.5-rc.1 起上游把它从独立下载按钮改成会话头部「更多操作」菜单，脚本同时兼容 `moreButton` 与 `sessionLogButton` 两个 css 键名。
 
 新增移动端 UI 定制时：断点优先与上游布局逻辑对齐（如 1024px 折叠断点）；隐藏类名用 `hideOnMobile`，结构性规则用 `appendCssSuffix`；新建 `scripts/<功能>/` 目录与脚本，登记 `docs/scripts.md` 与 `Dockerfile` 顺序列表，并在此节补一条规范。
 
