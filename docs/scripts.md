@@ -26,10 +26,12 @@
 | `scripts/brand-rotation/patch-brand-rotation.cjs` | 侧边栏品牌名在给定文案间轮播（official 与通用 profile 两条渲染路径都覆盖） | `dsh-client-modules`、`dsh-client-ui-brand-official`、`dsh-client-ui-sidebar` | `DSH_BRAND_ROTATION`、`DSH_BRAND_ROTATION_MS` |
 | `scripts/page-title/patch-page-title.cjs` | 浏览器标签标题固定为「会话标题 - DeepSeek」，并固定构建产物的初始 `<title>` | `dsh-client-ui-layout`、`apps/web/dist/index.html` | 无 |
 | `scripts/mobile-model-seat/patch-mobile-model-seat.cjs` | 手机端隐藏输入框的模型名与思考等级，避免与读写策略按钮重叠 | `dsh-client-ui-model-selection` | 无 |
-| `scripts/mobile-session-log/patch-mobile-session-log.cjs` | 手机端隐藏会话头部的「下载 session log」按钮 | `dsh-session-log-export` | 无 |
+| `scripts/mobile-session-log/patch-mobile-session-log.cjs` | 手机端隐藏会话头部的 session log 导出入口（0.1.5 起是「更多操作」菜单按钮 `moreButton`，更早是 `sessionLogButton`，两个键名都兼容） | `dsh-session-log-export` | 无 |
 | `scripts/mobile-collapsed-layout/patch-mobile-collapsed-layout.cjs` | 手机端折叠侧边栏不占页面宽度（grid 强制 `0 / 1fr / 0`） | `dsh-client-ui-layout` | 无 |
 | `scripts/mobile-sidebar-corner/patch-mobile-sidebar-corner.cjs` | 手机端折叠侧边栏收起到左上角 36×36 角标，其余 rail 控件隐藏 | `dsh-client-ui-sidebar` | 无 |
 | `scripts/preset-prompts-zh/patch-preset-prompts-zh.cjs` | 内置智能体预设（standard / cordis / minimal / ptc）提示词中文化，并追加「全程使用中文思考和回复」 | `packages/preset/agent-presets/presets/*/agent.cordis.yml` | 无 |
+
+锚点跟随 `VERSION` 指向的上游版本：上游改了结构，脚本会立即报错终止（构建失败），按报错更新对应脚本的锚点即可。
 
 补丁条目格式：`[from, to, all?, marker?]`。`from` 默认必须在文件里恰好出现一次（`all` 为真时允许零次以上）；`marker` 默认取 `to`，命中即视为已应用并跳过；锚点缺失时脚本抛错，构建随即失败——上游升级导致结构变化时会响亮地提示需要更新补丁。
 
