@@ -40,38 +40,24 @@ jobs:
         with:
           node-version: 24
 
+      # 定时轮询到上游版本变更时，先让 VERSION 前进（写入 + 提交 + 推送），再构建镜像。
+      # 版本解析与 VERSION 同步各自是一个单一职责脚本，见 docs/scripts.md。
       - name: 解析 dsh 版本
         id: version
-        run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            RAW="${{ github.event.inputs.version }}"
-            case "$RAW" in
-              dsh-v*) REF="$RAW"; VER="${RAW#dsh-v}" ;;
-              [0-9]*.[0-9]*.*) REF="dsh-v${RAW}"; VER="$RAW" ;;
-              *) REF="$RAW"; VER="$RAW" ;;
-            esac
-          else
-            REF="$(git ls-remote --tags https://github.com/deepseek-ai/deepseek-harness.git 'refs/tags/dsh-v*' | sed 's|.*refs/tags/||' | grep -v '\^{}' | sort -V | tail -1)"
-            VER="${REF#dsh-v}"
-          fi
-          if [ -z "$REF" ]; then
-            echo "error: no dsh release tag resolved" >&2
-            exit 1
-          fi
-          echo "ref=$REF" >> "$GITHUB_OUTPUT"
-          echo "version=$VER" >> "$GITHUB_OUTPUT"
-          echo "Resolved dsh git ref: $REF (version $VER)"
+        run: scripts/dsh-version/resolve-version.sh "${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+
+      - name: 同步 VERSION 文件
+        id: version-file
+        run: scripts/dsh-version/sync-version-file.sh "${{ steps.version.outputs.version }}" >> "$GITHUB_OUTPUT"
 
       - name: 判断是否需要构建
         id: check
         run: |
-          TARGET="${{ steps.version.outputs.version }}"
-          CURRENT="$(cat VERSION 2>/dev/null || true)"
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "$TARGET" = "$CURRENT" ]; then
-            echo "Up to date at $CURRENT -- nothing to build."
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "${{ steps.version-file.outputs.changed }}" != "true" ]; then
+            echo "Up to date at ${{ steps.version.outputs.version }} -- nothing to build."
             echo "should_build=false" >> "$GITHUB_OUTPUT"
           else
-            echo "Building $TARGET (current: ${CURRENT:-none})."
+            echo "Building ${{ steps.version.outputs.ref }} (version ${{ steps.version.outputs.version }})."
             echo "should_build=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -108,19 +94,3 @@ jobs:
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
-
-      - name: 记录已构建版本
-        if: steps.check.outputs.should_build == 'true'
-        run: |
-          TARGET="${{ steps.version.outputs.version }}"
-          CURRENT="$(cat VERSION 2>/dev/null || true)"
-          if [ "$TARGET" != "$CURRENT" ]; then
-            printf '%s\n' "$TARGET" > VERSION
-            git config user.name  'github-actions[bot]'
-            git config user.email 'github-actions[bot]@users.noreply.github.com'
-            git add VERSION
-            git commit -m "build: bump dsh to $TARGET" || echo "nothing to commit"
-            git push origin "HEAD:${GITHUB_REF_NAME}"
-          else
-            echo "VERSION already at $TARGET -- nothing to commit."
-          fi
