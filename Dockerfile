@@ -6,10 +6,10 @@ ARG DEBIAN_VARIANT=trixie
 # ---- build stage: build dsh from the deepseek-harness monorepo source ----
 FROM node:${NODE_VERSION}-${DEBIAN_VARIANT}-slim AS build
 
-# node-gyp toolchain + git for the source clone (build stage only; not part of
-# the final image).
+# node-gyp toolchain, musl-gcc for the static landlock launcher, and git for
+# the source clone (build stage only; not part of the final image).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential python3 git ca-certificates \
+    && apt-get install -y --no-install-recommends build-essential python3 git ca-certificates musl-tools \
     && rm -rf /var/lib/apt/lists/*
 
 # dsh source to build: a git ref (release tag `dsh-v*`, branch, or commit) of
@@ -36,6 +36,18 @@ WORKDIR /src
 # reviewed by pnpm-workspace.yaml's allowBuilds) and compile every package
 # (tsc + tsdown, host & client faces) plus the Web shell (vite).
 RUN pnpm install --frozen-lockfile
+
+# Native system binaries, compiled (never downloaded) into the workspace
+# packages' gitignored bin/ dirs: the POSIX flock Node-API addon behind session
+# write leases, and the static-musl landlock launcher the Linux sandbox rung
+# execs. pnpm only links those workspace packages, so before this step nothing
+# exists on disk and the container dies at session start with "Cannot find
+# module /opt/dsh/native/system/packages/linux-x64/bin/glibc/system.node".
+# `build:native` is the packages' own full build -- the launcher is why the
+# build stage needs musl-tools, and why this does not settle for upstream's
+# host-addon-only `build:native-system`.
+RUN pnpm --dir native/system run build:native
+
 RUN pnpm run build:lib && pnpm run build:web
 
 # Build-time patches: one single-purpose script per deployment enhancement, each

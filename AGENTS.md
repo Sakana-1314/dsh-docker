@@ -6,7 +6,7 @@
 
 **dsh-docker** —— 基于 [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) 上游源码（`dsh-v*` 发布标签）构建 DeepSeek Harness Docker 镜像的部署仓库：
 
-- `Dockerfile`：多阶段构建（pnpm workspace 安装 → `build:lib` + `build:web` → 按固定顺序执行 `scripts/` 下的构建时补丁）。
+- `Dockerfile`：多阶段构建（pnpm workspace 安装 → `native/system` 的原生扩展与 landlock 启动器 + `build:lib` + `build:web` → 按固定顺序执行 `scripts/` 下的构建时补丁）。
 - `scripts/<功能>/`：**所有 hook 脚本**，一个功能一个目录；每个脚本单一职责、自包含（脚本之间不互相引用），构建时补丁只写编译产物。
 - `docs/scripts.md`：**脚本清单**——列出每个脚本的作用、注入对象、环境变量与运行时机；新增 / 改名 / 删除脚本必须同步登记。
 - `VERSION`：当前镜像构建自哪个上游 dsh 版本，由 `.github/workflows/build.yml` 定时轮询自动维护。
