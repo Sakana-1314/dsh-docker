@@ -1,6 +1,6 @@
 # deepseek-harness 镜像
 
-基于 [deepseek-harness 仓库源码](https://github.com/deepseek-ai/deepseek-harness)（`dsh-v*` 发布标签）在镜像内构建的 DeepSeek Harness Docker 镜像：pnpm workspace 安装依赖、编译所有包与 Web 前端，再注入本仓库的构建时补丁（`scripts/` 下一个功能一个的单一职责脚本，清单见 [`docs/scripts.md`](docs/scripts.md)）。基础镜像为 `node:24-trixie-slim`（Debian 13 + Node 24），默认监听 `0.0.0.0`，配合 Docker 端口映射开箱即用。镜像由 GitHub Actions 定时检查上游最新发布标签并自动构建推送到腾讯云 CCR；**定时轮询发现上游版本变更时，工作流会先把新版本写进 `VERSION` 并提交推送，再构建镜像**（`:<版本>` 标签与 `VERSION` 始终对应当前构建的上游版本）。
+基于 [deepseek-harness 仓库源码](https://github.com/deepseek-ai/deepseek-harness)（`dsh-v*` 发布标签）在镜像内构建的 DeepSeek Harness Docker 镜像：pnpm workspace 安装依赖、编译原生 system 扩展（flock / landlock 沙箱启动器）与所有包、Web 前端，再注入本仓库的构建时补丁（`scripts/` 下一个功能一个的单一职责脚本，清单见 [`docs/scripts.md`](docs/scripts.md)）。基础镜像为 `node:24-trixie-slim`（Debian 13 + Node 24），默认监听 `0.0.0.0`，配合 Docker 端口映射开箱即用。镜像由 GitHub Actions 定时检查上游最新发布标签并自动构建推送到腾讯云 CCR；**定时轮询发现上游版本变更时，工作流会先把新版本写进 `VERSION` 并提交推送，再构建镜像**（`:<版本>` 标签与 `VERSION` 始终对应当前构建的上游版本）。
 
 镜像：`sgccr.ccs.tencentyun.com/misaka-network/deepseek-harness`（`:latest` / `:<版本>`）　上游：<https://github.com/deepseek-ai/deepseek-harness>
 
@@ -73,6 +73,7 @@ docker build --build-arg DSH_REF=dsh-v0.1.0-rc.7 -t deepseek-harness:local .
 | `DEEPSEEK_API_KEY` | DeepSeek API Key（必填，也可写进 `./dsh-home/.env`） | 无 |
 | `DSH_PORT` | 监听端口 | `3080` |
 | `DSH_DEFAULT_DIRECTORY` | 默认工作目录 | `/workspace`（容器当前目录） |
+| `DSH_PERMISSION_MODE` | 部署级文件读写策略：`workspace-write`（沙箱限制在工作区内）/ `danger-full-access`（不限制，审批同时放行） | `workspace-write` |
 | `DSH_RETRY` | 请求失败重试次数 | `30` |
 | `DSH_RETRY_INITIAL_DELAY_MS` | 重试退避初始延迟（毫秒） | `500` |
 | `DSH_RETRY_MAX_DELAY_MS` | 重试退避上限（毫秒） | `10000` |
@@ -118,6 +119,12 @@ docker build --build-arg DSH_REF=dsh-v0.1.0-rc.7 -t deepseek-harness:local .
 ### 启动时自动初始化 profiles 目录
 
 容器启动时会自动创建 `${DSH_HOME:-$HOME/.dsh}/profiles` 目录。这样即使把一个空的宿主机目录挂载到 `/root/.dsh`，首次启动也不会因为 profiles 目录不存在而提示错误；已有目录和其中的插件配置不会受到影响。
+
+### 文件读写策略（沙箱）
+
+镜像在构建阶段编译了上游 `native/system` 的两个原生二进制：会话写租约用的 POSIX flock 扩展，以及 Linux 沙箱用的静态 musl Landlock 启动器（`bin/landlock-run`）。两者都是上游仓库里 gitignored 的构建产物，源码构建必须自己编译——否则 addon 缺失会让会话在启动时直接抛 `Cannot find module .../bin/glibc/system.node`，沙箱则因为没有可用后端而拒绝执行命令（镜像内不装 bwrap，Linux 侧只有 Landlock 这一档；容器内探测结果为 `fully enforced`）。
+
+因此容器默认的 `workspace-write` 策略是真正生效的：命令对工作区（`/workspace`）之外的写入由内核拒绝。若要让容器本身充当隔离边界（例如已用只读挂载、独立用户等收紧权限），可设 `DSH_PERMISSION_MODE=danger-full-access` 关闭沙箱（审批策略随之变为自动放行）。
 
 ### 预装 Claude Code CLI
 
