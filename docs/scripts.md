@@ -19,7 +19,7 @@
 | `scripts/llm-retry/patch-llm-retry.cjs` | 请求重试与退避参数改为运行时环境变量，并支持覆盖 User-Agent、追加可重试错误码 | `dsh-llm` | `DSH_RETRY`、`DSH_RETRY_INITIAL_DELAY_MS`、`DSH_RETRY_MAX_DELAY_MS`、`DSH_RETRY_JITTER_RATIO`、`DSH_RETRYABLE_CODES`、`UA` |
 | `scripts/default-directory/patch-default-directory.cjs` | 目录选择器默认从容器工作目录起，而不是 `$HOME` | `dsh-host-directory-picker-browse` | `DSH_DEFAULT_DIRECTORY` |
 | `scripts/trust-fence/patch-trust-fence.cjs` | 信任栅栏移除：主机端 `/api` 的 Host/Origin 校验、浏览器会话（token/cookie）鉴权、浏览器端 loopback 判定，并把开关注入页面全局 | `dsh-client-connection`（host + browser）、`dsh-client-modules` | `DSH_DISABLE_TRUST_FENCE` |
-| `scripts/auto-plan/patch-auto-plan.cjs` | 新增 `/auto-plan` 命令：计划模式退出时自动批准，跳过评审确认卡片 | `dsh-plan-mode` | 无 |
+| `scripts/auto-plan/patch-auto-plan.cjs` | 新增 `/auto-plan` 命令：计划模式退出时自动批准，跳过评审确认卡片；并把命令描述登记进上游的双语映射（中文界面显示中文描述） | `dsh-plan-mode`、`dsh-client-ui-commands` | 无 |
 | `scripts/welcome-notice/patch-welcome-notice.cjs` | 默认跳过首次进入 GUI 的内测声明弹窗 | `dsh-client-modules`、`dsh-client-ui-settings-models` | `DSH_SHOW_WELCOME_NOTICE` |
 | `scripts/brand-rotation/patch-brand-rotation.cjs` | 侧边栏品牌名在给定文案间轮播（official 与通用 profile 两条渲染路径都覆盖） | `dsh-client-modules`、`dsh-client-ui-brand-official`、`dsh-client-ui-sidebar` | `DSH_BRAND_ROTATION`、`DSH_BRAND_ROTATION_MS` |
 | `scripts/mobile-ui/patch-mobile-ui.cjs` | 手机端 UI 优化，四条规则一个脚本：隐藏输入框的模型名与思考等级（< 560px）、隐藏会话头部的 session log 导出入口（< 560px）、折叠侧边栏不占页面宽度（< 1024px）、折叠侧边栏收起到左上角 36×36 角标（< 1024px） | `dsh-client-ui-model-selection`、`dsh-session-log-export`、`dsh-client-ui-layout`、`dsh-client-ui-sidebar` | 无 |
