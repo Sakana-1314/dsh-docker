@@ -6,6 +6,12 @@
  * 退出计划模式后继续执行计划。auto 标记从会话日志折叠（command/run + plan/mode），所以
  * 重启 / fork 后可恢复；普通 /plan 行为不变，/plan off 与 /auto-plan off 均可退出。
  *
+ * 命令文案跟随上游的双语机制（浏览器端按 locale 取字典），所以本脚本同时改两处产物：
+ *   1. 宿主 `@deepseek-ai/dsh-plan-mode`：注册 /auto-plan 命令（英文描述常量）；
+ *   2. 浏览器 `@deepseek-ai/dsh-client-ui-commands`：上游用「宿主描述 === en 字典值」
+ *      判定一条宿主命令是否可翻译（`HOST_DESCRIPTION_KEYS` + `command` 命名空间字典），
+ *      故补上 `description.auto-plan` 的 zh/en 两条字典与映射，中文界面即显示中文描述。
+ *
  * 单一职责、自包含：本脚本不引用 scripts/ 下的任何其他脚本。清单见 docs/scripts.md。
  */
 const fs = require('node:fs')
@@ -13,6 +19,14 @@ const path = require('node:path')
 const { spawnSync } = require('node:child_process')
 
 const NAME = 'patch-auto-plan'
+
+/**
+ * /auto-plan 的英文命令描述（单一来源）：宿主侧 `commands.register` 写入它，浏览器端
+ * ui-commands 拿它和 `en["description.auto-plan"]` 逐字比对，命中才翻译成中文。
+ */
+const AUTO_PLAN_DESCRIPTION = 'Enter or leave auto-approving plan mode'
+/** /auto-plan 的中文命令描述（`command` 命名空间字典值，措辞与 /plan 的「进入或退出计划模式」对齐）。 */
+const AUTO_PLAN_DESCRIPTION_ZH = '进入或退出自动批准的计划模式'
 const root = path.resolve(process.argv[2] ?? process.env.DSH_SOURCE_DIR ?? '')
 if (!root || !fs.existsSync(path.join(root, 'package.json'))) {
   console.error(NAME + ': pass the built source checkout dir as argv[1] (or set DSH_SOURCE_DIR)')
@@ -50,12 +64,14 @@ function findPackageDir(name) {
   return candidates[0]
 }
 
-// 补丁目标文件：包内 exports["."] 的 default/import 或 main 指向的编译产物。
-function entryFile(pkgDir, name) {
+// 补丁目标文件：包内 exports[subpath] 的 default/import 或（宿主产物）main 指向的编译产物。
+// subpath 默认 '.' 取宿主产物；浏览器产物用 './client'（`files` 里的 lib/client.js）。
+function entryFile(pkgDir, name, subpath = '.') {
   const pj = JSON.parse(fs.readFileSync(path.join(pkgDir, 'package.json'), 'utf8'))
-  const def = pj.exports?.['.']?.default ?? pj?.exports?.['.']?.import ?? pj.main
+  const entry = pj.exports?.[subpath] ?? (subpath === '.' ? { default: pj.main } : undefined)
+  const def = entry?.default ?? entry?.import
   if (typeof def !== 'string' || def.length === 0) {
-    throw new Error(NAME + ': cannot resolve the entry file of "' + name + '"')
+    throw new Error(NAME + ': cannot resolve the "' + subpath + '" entry file of "' + name + '"')
   }
   return path.resolve(pkgDir, def)
 }
@@ -113,14 +129,41 @@ const targets = [
       // /auto-plan command, registered beside /plan inside the same child.
       [
         '\t\t\t});\n\t\t});\n\t\tctx.tools.register(defineTool({',
-        '\t\t\t});\n\t\tcommandCtx.commands.register({\n\t\t\tname: "auto-plan",\n\t\t\tdescription: "Enter or leave auto-approving plan mode",\n\t\t\tinput: {\n\t\t\t\thint: "[off|message]",\n\t\t\t\timages: true\n\t\t\t},\n\t\t\thandler: ({ agent, rawInput, attachments }) => {\n\t\t\t\tconst message = rawInput.trim();\n\t\t\t\tif (message === "off" && attachments.length > 0) return {\n\t\t\t\t\tkind: "error",\n\t\t\t\t\ttext: "Image attachments cannot accompany /auto-plan off."\n\t\t\t\t};\n\t\t\t\tif (message === "off") return this.set(agent, false) === "committed" ? {\n\t\t\t\t\tkind: "success",\n\t\t\t\t\ttext: "Plan mode off."\n\t\t\t\t} : {\n\t\t\t\t\tkind: "success",\n\t\t\t\t\ttext: "Leaving plan mode (applies from the next step)."\n\t\t\t\t};\n\t\t\t\tconst outcome = this.set(agent, true);\n\t\t\t\tif (message !== "" || attachments.length > 0) agent.steer(createUserMessage({\n\t\t\t\t\tcontent: [...attachments, ...message === "" ? [] : [{\n\t\t\t\t\t\ttype: "text",\n\t\t\t\t\t\ttext: message\n\t\t\t\t\t}]],\n\t\t\t\t\tsource: { kind: "user" }\n\t\t\t\t}));\n\t\t\t\treturn {\n\t\t\t\t\tkind: "success",\n\t\t\t\t\ttext: outcome === "committed" ? "Auto plan mode on — plans auto-approve. Use /plan off to leave." : "Entering auto plan mode — plans auto-approve (applies from the next step). Use /plan off to leave."\n\t\t\t\t};\n\t\t\t}\n\t\t});\n\t\t});\n\t\tctx.tools.register(defineTool({',
+        '\t\t\t});\n\t\tcommandCtx.commands.register({\n\t\t\tname: "auto-plan",\n\t\t\tdescription: "' + AUTO_PLAN_DESCRIPTION + '",\n\t\t\tinput: {\n\t\t\t\thint: "[off|message]",\n\t\t\t\timages: true\n\t\t\t},\n\t\t\thandler: ({ agent, rawInput, attachments }) => {\n\t\t\t\tconst message = rawInput.trim();\n\t\t\t\tif (message === "off" && attachments.length > 0) return {\n\t\t\t\t\tkind: "error",\n\t\t\t\t\ttext: "Image attachments cannot accompany /auto-plan off."\n\t\t\t\t};\n\t\t\t\tif (message === "off") return this.set(agent, false) === "committed" ? {\n\t\t\t\t\tkind: "success",\n\t\t\t\t\ttext: "Plan mode off."\n\t\t\t\t} : {\n\t\t\t\t\tkind: "success",\n\t\t\t\t\ttext: "Leaving plan mode (applies from the next step)."\n\t\t\t\t};\n\t\t\t\tconst outcome = this.set(agent, true);\n\t\t\t\tif (message !== "" || attachments.length > 0) agent.steer(createUserMessage({\n\t\t\t\t\tcontent: [...attachments, ...message === "" ? [] : [{\n\t\t\t\t\t\ttype: "text",\n\t\t\t\t\t\ttext: message\n\t\t\t\t\t}]],\n\t\t\t\t\tsource: { kind: "user" }\n\t\t\t\t}));\n\t\t\t\treturn {\n\t\t\t\t\tkind: "success",\n\t\t\t\t\ttext: outcome === "committed" ? "Auto plan mode on — plans auto-approve. Use /plan off to leave." : "Entering auto plan mode — plans auto-approve (applies from the next step). Use /plan off to leave."\n\t\t\t\t};\n\t\t\t}\n\t\t});\n\t\t});\n\t\tctx.tools.register(defineTool({',
+      ],
+    ],
+  },
+  {
+    // /auto-plan's copy follows the active locale. Upstream ui-commands owns
+    // the `command` namespace and localizes ONE host command description by
+    // name, but only when the descriptor equals its own en dictionary value
+    // (`hostDescription`); a name absent from HOST_DESCRIPTION_KEYS keeps its
+    // verbatim English descriptor, which is what /auto-plan did in a Chinese
+    // GUI. Register the same pair here: the zh/en dictionary entries feed
+    // `this.t(key)` and the map entry opts the host command into it. The en
+    // value must stay byte-identical to AUTO_PLAN_DESCRIPTION above (it is the
+    // comparison operand), while the zh value is what a Chinese GUI shows.
+    pkg: '@deepseek-ai/dsh-client-ui-commands',
+    subpath: './client',
+    replacements: [
+      [
+        '\t\t\t"description.plan": "进入或退出计划模式",',
+        '\t\t\t"description.plan": "进入或退出计划模式",\n\t\t\t"description.auto-plan": "' + AUTO_PLAN_DESCRIPTION_ZH + '",',
+      ],
+      [
+        '\t\t\t"description.plan": "Enter or leave plan mode",',
+        '\t\t\t"description.plan": "Enter or leave plan mode",\n\t\t\t"description.auto-plan": "' + AUTO_PLAN_DESCRIPTION + '",',
+      ],
+      [
+        '\t\t\t["plan", "description.plan"]',
+        '\t\t\t["plan", "description.plan"],\n\t\t\t["auto-plan", "description.auto-plan"]',
       ],
     ],
   },
 ]
-for (const { pkg, file, replacements, custom } of targets) {
+for (const { pkg, file, subpath, replacements, custom } of targets) {
   const dir = findPackageDir(pkg)
-  const entry = path.resolve(dir, file ?? entryFile(dir, pkg))
+  const entry = path.resolve(dir, file ?? entryFile(dir, pkg, subpath))
   const display = path.relative(root, entry)
   let src = fs.readFileSync(entry, 'utf8')
   src = custom === void 0 ? applyReplacements(display, src, replacements) : custom(entry, src, log)
