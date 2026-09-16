@@ -37,7 +37,12 @@
 
 新增移动端 UI 定制时：断点优先与上游布局逻辑对齐（如 1024px 折叠断点）；隐藏类名用 `hideOnMobile`（键名会随上游改名时传 `{ anyOf: true }` 别名），结构性规则用 `appendCssSuffix`；在 `mobile-ui` 脚本里加一条规则、更新 `docs/scripts.md` 的说明，并在此节补一条规范。
 
-## 5. 提交流程（必循，每次改动都按此执行）
+## 5. 品牌资源（favicon）规范
+
+- **favicon 为固定红色 `#E60012`**：浏览器标签页 / PWA 图标（`/favicon.svg`）的鲸鱼标一律是红标，浅色与深色配色方案下都一样。上游 favicon 用 `<style>` 媒体查询区分配色（浅色黑 `fill="#000"`、深色白 `fill: #fff`），因此两条颜色都要改——只改 `<path>` 属性会让深色模式仍是白标。
+- **只改构建产物**：补丁对象是 `apps/web/dist/favicon.svg`（gitignored，由 `dsh web` 作为静态资源伺服），上游被 git 跟踪的源文件 `apps/web/public/favicon.svg` 不动；颜色常量写在 `scripts/red-favicon/patch-red-favicon.cjs` 里，不引入环境变量。改色值只需改该脚本的 `RED` 常量，并在 `docs/scripts.md` 与 `README.md` 同步。
+
+## 6. 提交流程（必循，每次改动都按此执行）
 
 1. **按功能点拆分 commit**：一次改动先拆成若干逻辑独立、主题清晰的小 commit（如：脚本拆分 / Dockerfile / 工作流 / 文档各一个），每笔 commit 都能独立审查；**禁止**把所有改动揉成一个大 commit。
 2. **功能分支**：从 `main` 切出 `feat/<简述>`（如 `feat/scripts-layout`），在分支上逐个提交。**不要在 `main` 上直接提交改动**（纯 `**.md` 文档例外，见第 6 条）。
@@ -46,8 +51,9 @@
 5. **清理多余分支**：定期核对并删除已合并交付的陈旧分支——远端 `git push origin --delete <分支>`（先用 `gh pr list --state merged` 确认已交付），本地 `git fetch --prune`（或 `git remote prune origin`）清除陈旧跟踪引用。
 6. **文档例外**：纯 `**.md` 改动不会触发 CI 镜像构建（`.github/workflows/build.yml` 的 `paths-ignore` 忽略 `**.md`），可免 PR 直接提交到 `main`；其余改动一律走第 1–4 条。
 
-## 6. 常见任务速查
+## 7. 常见任务速查
 
 - **给 GUI 加一条手机端 CSS 定制**：确认断点 → 在 `scripts/mobile-ui/patch-mobile-ui.cjs` 的 `targets` 里加一条（隐藏类名用 `hideOnMobile`，结构性规则用 `appendCssSuffix`）→ 跑脚本 → 刷新 GUI 验证 → 幂等复检 → 更新 `docs/scripts.md` 的说明 + 本文件第 4 节（**不新建脚本**）。
 - **新增 / 改名 / 删除 hook 脚本**：保持单一职责与自包含（不引用其他脚本）；同步 `docs/scripts.md` 清单；构建时脚本还要改 `Dockerfile` 的顺序列表。
+- **换 favicon 颜色**：改 `scripts/red-favicon/patch-red-favicon.cjs` 的 `RED` 常量（浅色 `fill="#000"`、深色 `<style>` 里的 `fill: #fff` 两条锚点都要覆盖）→ 跑脚本 → 刷新 GUI 验证 → 幂等复检 → 同步 `docs/scripts.md` 与 `README.md` + 本文件第 5 节。
 - **升级上游 dsh 版本**：定时轮询（`.github/workflows/build.yml`）发现上游新 `dsh-v*` 标签后，先由 `scripts/dsh-version/sync-version-file.sh` 把版本写进 `VERSION` 并提交推送，再构建镜像；手动触发用 `workflow_dispatch` 传版本（同样会先同步 `VERSION`）。若构建在补丁锚点处失败，按报错更新对应脚本后再构建。

@@ -107,6 +107,10 @@ docker build --build-arg DSH_REF=dsh-v0.1.0-rc.7 -t deepseek-harness:local .
 
 镜像通过 `scripts/brand-rotation/patch-brand-rotation.cjs` 把左上角 logo 右侧的品牌名从固定字标改为文本，在 `DeepSeek Harness` 与 `探索未至之境` 之间轮播（默认每 4 秒切换，带淡入淡出）。文案与间隔可用 `DSH_BRAND_ROTATION`（`|` 分隔）/ `DSH_BRAND_ROTATION_MS` 环境变量调整；official 与通用（非 official）构建 profile 两条渲染路径都已覆盖，渲染在浏览器端完成，改环境变量后刷新页面即生效。
 
+### 红色 favicon
+
+镜像通过 `scripts/red-favicon/patch-red-favicon.cjs` 把 favicon（浏览器标签页 / PWA 图标，`/favicon.svg`）换成红色版：鲸鱼标由上游的浅色模式黑色（`fill="#000"`）/ 深色模式白色（`<style>` 里的 `fill: #fff`）统一改为固定红 `#E60012`，两种配色方案下都是红标。补丁只改 Web 构建产物 `apps/web/dist/favicon.svg`（dsh web 作为静态资源伺服），上游被 git 跟踪的源文件 `apps/web/public/favicon.svg` 不受影响；颜色写死在脚本里，无需环境变量。
+
 ### 手机端 UI 优化
 
 镜像通过 `scripts/mobile-ui/patch-mobile-ui.cjs`（一个脚本、四条规则）优化窄视口下的 GUI：
