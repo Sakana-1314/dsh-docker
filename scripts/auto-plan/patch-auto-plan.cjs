@@ -7,10 +7,14 @@
  * 重启 / fork 后可恢复；普通 /plan 行为不变，/plan off 与 /auto-plan off 均可退出。
  *
  * 命令文案跟随上游的双语机制（浏览器端按 locale 取字典），所以本脚本同时改两处产物：
- *   1. 宿主 `@deepseek-ai/dsh-plan-mode`：注册 /auto-plan 命令（英文描述常量）；
- *   2. 浏览器 `@deepseek-ai/dsh-client-ui-commands`：上游用「宿主描述 === en 字典值」
- *      判定一条宿主命令是否可翻译（`HOST_DESCRIPTION_KEYS` + `command` 命名空间字典），
- *      故补上 `description.auto-plan` 的 zh/en 两条字典与映射，中文界面即显示中文描述。
+ *   1. 宿主 `@deepseek-ai/dsh-plan-mode`：注册 /auto-plan 命令（英文描述常量 + 专属
+ *      `definitionId`，供浏览器端按定义而非文案识别它）；
+ *   2. 浏览器 `@deepseek-ai/dsh-client-ui-commands`：把 /auto-plan 登记进该包的
+ *      「内建命令」表。上游 0.1.6 起改按**定义**识别内建命令（`BUILTINS` 按
+ *      `definitionId` 匹配 + `HOST_FACES` 给菜单面），不再比对描述文案，因此需要补
+ *      label / description / token 三组 zh/en 字典、BUILTINS 映射与 HOST_FACES 菜单面；
+ *      0.1.5-rc.2 及更早则是按**文案**识别（`HOST_DESCRIPTION_KEYS` + 描述逐字比对），
+ *      对应旧的三条注入。两种形态都在这里处理，构建旧 ref 也不会失败。
  *
  * 单一职责、自包含：本脚本不引用 scripts/ 下的任何其他脚本。清单见 docs/scripts.md。
  */
@@ -21,12 +25,26 @@ const { spawnSync } = require('node:child_process')
 const NAME = 'patch-auto-plan'
 
 /**
- * /auto-plan 的英文命令描述（单一来源）：宿主侧 `commands.register` 写入它，浏览器端
- * ui-commands 拿它和 `en["description.auto-plan"]` 逐字比对，命中才翻译成中文。
+ * /auto-plan 的英文命令描述（单一来源）：既是 `en["description.auto-plan"]` 字典值
+ * （0.1.6 起浏览器端直接按 key 取用），也是 0.1.5 及更早「描述逐字比对」机制的比较操作数。
  */
 const AUTO_PLAN_DESCRIPTION = 'Enter or leave auto-approving plan mode'
 /** /auto-plan 的中文命令描述（`command` 命名空间字典值，措辞与 /plan 的「进入或退出计划模式」对齐）。 */
 const AUTO_PLAN_DESCRIPTION_ZH = '进入或退出自动批准的计划模式'
+/**
+ * /auto-plan 的定义标识（0.1.6 起浏览器端按定义而非文案识别内建命令）。/auto-plan 与
+ * /plan 由同一个包注册，必须使用**不同**的 id：`builtinCommandName` 是 find 首个匹配，
+ * 共用 id 会让 /auto-plan 被认成 /plan、显示计划的名字与描述。`brandString` 在运行时是
+ * 恒等函数，故直接写字符串字面量（0.1.5 及更早的包没有该导入，写它反而会 ReferenceError；
+ * 旧版 registry 只挑已知字段，多出的 definitionId 被忽略）。
+ */
+const AUTO_PLAN_DEFINITION_ID = '@deepseek-ai/dsh-plan-mode#auto-plan'
+/** /auto-plan 在菜单里的标题（0.1.6 起 `label.*` 字典，与 /plan 的「计划」并列）。 */
+const AUTO_PLAN_LABEL = 'Auto Plan'
+const AUTO_PLAN_LABEL_ZH = '自动计划'
+/** /auto-plan 的输入别名（0.1.6 起 `token.*` 字典，供本地化词法解析回定义）。 */
+const AUTO_PLAN_TOKEN = 'auto-plan'
+const AUTO_PLAN_TOKEN_ZH = '自动计划'
 const root = path.resolve(process.argv[2] ?? process.env.DSH_SOURCE_DIR ?? '')
 if (!root || !fs.existsSync(path.join(root, 'package.json'))) {
   console.error(NAME + ': pass the built source checkout dir as argv[1] (or set DSH_SOURCE_DIR)')
@@ -95,6 +113,78 @@ function applyReplacements(display, src, replacements) {
   }
   return src
 }
+/**
+ * 注入 /auto-plan 的菜单文案（`command` 命名空间），兼容上游两种识别机制：
+ *   - 0.1.6 起（`HOST_FACES` 存在）：按**定义**识别——字典要补齐 label/description/token
+ *     三组 zh/en，`BUILTINS` 要加 definitionId 映射，`HOST_FACES` 要加菜单面（含图标）；
+ *   - 0.1.5 及更早（`HOST_DESCRIPTION_KEYS` 存在）：按**文案**识别——只需 en/zh 的
+ *     description 字典与 `[name, key]` 映射对，en 值须与宿主描述逐字相同。
+ * 每条注入独立判「已应用」（用各自独有的 marker），锚点缺失或已应用状态不完整都报错。
+ * @param entry - 编译产物绝对路径。
+ * @param src - 当前文件内容。
+ * @param log - 统一日志函数。
+ * @returns 注入后的文件内容。
+ */
+function patchUiCommands(entry, src, log) {
+  const display = path.relative(root, entry)
+  const newMechanism = src.includes('const HOST_FACES = new Map([')
+  if (!newMechanism && !src.includes('HOST_DESCRIPTION_KEYS')) {
+    throw new Error(NAME + ': ' + display + ' matches neither the >=0.1.6 (HOST_FACES) nor the <=0.1.5 (HOST_DESCRIPTION_KEYS) localization shape')
+  }
+  const tab = '\t\t\t'
+  // [anchor, marker, insertion]: marker is the exact injected text in this
+  // entry, so a half-applied file is never mistaken for a finished injection.
+  let additions
+  if (newMechanism) {
+    // Mirror the /plan menu face's own icon expression so a renamed primitives
+    // binding cannot desync this injection from the surrounding code. Greedy
+    // `.+` is confined to one line, so it captures the whole icon expression.
+    const face = /\t\t\thostFace\("plan", (.+)\),/.exec(src)
+    if (face === null) throw new Error(NAME + ': ' + display + ' has no hostFace("plan", ...) entry to mirror')
+    // The zh dictionary is the key-set source of truth and en is checked
+    // complete against it, so every key lands in both tables; token.* also
+    // feeds the localized-spelling aliases, which iterate Object.keys(BUILTINS).
+    const keys = [
+      ['label', AUTO_PLAN_LABEL, AUTO_PLAN_LABEL_ZH, '"label.plan": ', '"计划"', '"Plan"'],
+      ['description', AUTO_PLAN_DESCRIPTION, AUTO_PLAN_DESCRIPTION_ZH, '"description.plan": ', '"进入或退出计划模式"', '"Enter or leave plan mode"'],
+      ['token', AUTO_PLAN_TOKEN, AUTO_PLAN_TOKEN_ZH, '"token.plan": ', '"计划"', '"plan"'],
+    ]
+    additions = keys.flatMap(([name, en, zh, prefix, zhPlan, enPlan]) => [
+      [tab + prefix + zhPlan + ',', '"' + name + '.auto-plan": "' + zh + '"', '\n' + tab + '"' + name + '.auto-plan": "' + zh + '",'],
+      [tab + prefix + enPlan + ',', '"' + name + '.auto-plan": "' + en + '"', '\n' + tab + '"' + name + '.auto-plan": "' + en + '",'],
+    ])
+    additions.push(
+      // Identity map (quoted key: the name contains a hyphen) + menu face.
+      [
+        tab + 'plan: "@deepseek-ai/dsh-plan-mode",',
+        '"auto-plan": "' + AUTO_PLAN_DEFINITION_ID + '"',
+        '\n' + tab + '"auto-plan": "' + AUTO_PLAN_DEFINITION_ID + '",',
+      ],
+      [face[0], 'hostFace("auto-plan"', '\n' + tab + 'hostFace("auto-plan", ' + face[1] + '),'],
+    )
+  } else {
+    additions = [
+      [tab + '"description.plan": "进入或退出计划模式",', '"description.auto-plan": "' + AUTO_PLAN_DESCRIPTION_ZH + '"', '\n' + tab + '"description.auto-plan": "' + AUTO_PLAN_DESCRIPTION_ZH + '",'],
+      [tab + '"description.plan": "Enter or leave plan mode",', '"description.auto-plan": "' + AUTO_PLAN_DESCRIPTION + '"', '\n' + tab + '"description.auto-plan": "' + AUTO_PLAN_DESCRIPTION + '",'],
+      [
+        tab + '["plan", "description.plan"]',
+        '["auto-plan", "description.auto-plan"]',
+        ',\n' + tab + '["auto-plan", "description.auto-plan"]',
+      ],
+    ]
+  }
+  for (const [anchor, marker, insertion] of additions) {
+    if (src.includes(marker)) continue
+    const count = src.split(anchor).length - 1
+    if (count !== 1) {
+      console.error(NAME + ': expected exactly one occurrence (found ' + count + ') in ' + display + ':\n  ' + anchor)
+      process.exit(1)
+    }
+    src = src.replace(anchor, anchor + insertion)
+  }
+  return src
+}
+
 const targets = [
   {
     // /auto-plan command: enter the same plan mode as /plan but mark the
@@ -127,38 +217,30 @@ const targets = [
         '\t\t\t\tif (foldAutoPlan(agent.session.snapshotEvents())) {\n\t\t\t\t\tthis.pendingIntents.set(agent.session, { active: false, narrate: false });\n\t\t\t\t\treturn { approved: true };\n\t\t\t\t}\n\t\t\t\tconst interaction = ctx.get("userQuestions");',
       ],
       // /auto-plan command, registered beside /plan inside the same child.
+      // `definitionId` (0.1.6+) is what the browser side matches to recognize a
+      // built-in command; a plain string literal is enough because the brand is
+      // compile-time only (`brandString` is the identity at runtime) and 0.1.5
+      // and earlier ignore the field.
       [
         '\t\t\t});\n\t\t});\n\t\tctx.tools.register(defineTool({',
-        '\t\t\t});\n\t\tcommandCtx.commands.register({\n\t\t\tname: "auto-plan",\n\t\t\tdescription: "' + AUTO_PLAN_DESCRIPTION + '",\n\t\t\tinput: {\n\t\t\t\thint: "[off|message]",\n\t\t\t\timages: true\n\t\t\t},\n\t\t\thandler: ({ agent, rawInput, attachments }) => {\n\t\t\t\tconst message = rawInput.trim();\n\t\t\t\tif (message === "off" && attachments.length > 0) return {\n\t\t\t\t\tkind: "error",\n\t\t\t\t\ttext: "Image attachments cannot accompany /auto-plan off."\n\t\t\t\t};\n\t\t\t\tif (message === "off") return this.set(agent, false) === "committed" ? {\n\t\t\t\t\tkind: "success",\n\t\t\t\t\ttext: "Plan mode off."\n\t\t\t\t} : {\n\t\t\t\t\tkind: "success",\n\t\t\t\t\ttext: "Leaving plan mode (applies from the next step)."\n\t\t\t\t};\n\t\t\t\tconst outcome = this.set(agent, true);\n\t\t\t\tif (message !== "" || attachments.length > 0) agent.steer(createUserMessage({\n\t\t\t\t\tcontent: [...attachments, ...message === "" ? [] : [{\n\t\t\t\t\t\ttype: "text",\n\t\t\t\t\t\ttext: message\n\t\t\t\t\t}]],\n\t\t\t\t\tsource: { kind: "user" }\n\t\t\t\t}));\n\t\t\t\treturn {\n\t\t\t\t\tkind: "success",\n\t\t\t\t\ttext: outcome === "committed" ? "Auto plan mode on — plans auto-approve. Use /plan off to leave." : "Entering auto plan mode — plans auto-approve (applies from the next step). Use /plan off to leave."\n\t\t\t\t};\n\t\t\t}\n\t\t});\n\t\t});\n\t\tctx.tools.register(defineTool({',
+        '\t\t\t});\n\t\tcommandCtx.commands.register({\n\t\t\tdefinitionId: "' + AUTO_PLAN_DEFINITION_ID + '",\n\t\t\tname: "auto-plan",\n\t\t\tdescription: "' + AUTO_PLAN_DESCRIPTION + '",\n\t\t\tinput: {\n\t\t\t\thint: "[off|message]",\n\t\t\t\timages: true\n\t\t\t},\n\t\t\thandler: ({ agent, rawInput, attachments }) => {\n\t\t\t\tconst message = rawInput.trim();\n\t\t\t\tif (message === "off" && attachments.length > 0) return {\n\t\t\t\t\tkind: "error",\n\t\t\t\t\ttext: "Image attachments cannot accompany /auto-plan off."\n\t\t\t\t};\n\t\t\t\tif (message === "off") return this.set(agent, false) === "committed" ? {\n\t\t\t\t\tkind: "success",\n\t\t\t\t\ttext: "Plan mode off."\n\t\t\t\t} : {\n\t\t\t\t\tkind: "success",\n\t\t\t\t\ttext: "Leaving plan mode (applies from the next step)."\n\t\t\t\t};\n\t\t\t\tconst outcome = this.set(agent, true);\n\t\t\t\tif (message !== "" || attachments.length > 0) agent.steer(createUserMessage({\n\t\t\t\t\tcontent: [...attachments, ...message === "" ? [] : [{\n\t\t\t\t\t\ttype: "text",\n\t\t\t\t\t\ttext: message\n\t\t\t\t\t}]],\n\t\t\t\t\tsource: { kind: "user" }\n\t\t\t\t}));\n\t\t\t\treturn {\n\t\t\t\t\tkind: "success",\n\t\t\t\t\ttext: outcome === "committed" ? "Auto plan mode on — plans auto-approve. Use /plan off to leave." : "Entering auto plan mode — plans auto-approve (applies from the next step). Use /plan off to leave."\n\t\t\t\t};\n\t\t\t}\n\t\t});\n\t\t});\n\t\tctx.tools.register(defineTool({',
       ],
     ],
   },
   {
     // /auto-plan's copy follows the active locale. Upstream ui-commands owns
-    // the `command` namespace and localizes ONE host command description by
-    // name, but only when the descriptor equals its own en dictionary value
-    // (`hostDescription`); a name absent from HOST_DESCRIPTION_KEYS keeps its
-    // verbatim English descriptor, which is what /auto-plan did in a Chinese
-    // GUI. Register the same pair here: the zh/en dictionary entries feed
-    // `this.t(key)` and the map entry opts the host command into it. The en
-    // value must stay byte-identical to AUTO_PLAN_DESCRIPTION above (it is the
-    // comparison operand), while the zh value is what a Chinese GUI shows.
+    // the `command` namespace and localizes built-in Host command faces; the
+    // recognition mechanism differs by version (see patchUiCommands above):
+    // >=0.1.6 matches the descriptor's `definitionId` against BUILTINS and
+    // localizes label/description/token through HOST_FACES, while <=0.1.5
+    // matched the description text against HOST_DESCRIPTION_KEYS. Either way an
+    // unregistered command keeps its verbatim English descriptor, which is what
+    // /auto-plan did in a Chinese GUI before this patch.
     pkg: '@deepseek-ai/dsh-client-ui-commands',
     subpath: './client',
-    replacements: [
-      [
-        '\t\t\t"description.plan": "进入或退出计划模式",',
-        '\t\t\t"description.plan": "进入或退出计划模式",\n\t\t\t"description.auto-plan": "' + AUTO_PLAN_DESCRIPTION_ZH + '",',
-      ],
-      [
-        '\t\t\t"description.plan": "Enter or leave plan mode",',
-        '\t\t\t"description.plan": "Enter or leave plan mode",\n\t\t\t"description.auto-plan": "' + AUTO_PLAN_DESCRIPTION + '",',
-      ],
-      [
-        '\t\t\t["plan", "description.plan"]',
-        '\t\t\t["plan", "description.plan"],\n\t\t\t["auto-plan", "description.auto-plan"]',
-      ],
-    ],
+    custom(entry, src, log) {
+      return patchUiCommands(entry, src, log)
+    },
   },
 ]
 for (const { pkg, file, subpath, replacements, custom } of targets) {
