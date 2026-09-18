@@ -114,6 +114,30 @@ function applyReplacements(display, src, replacements) {
   return src
 }
 /**
+ * 取 `hostFace("<name>", <图标表达式>)` 里那段图标表达式，供注入的新菜单面复用。
+ * 用配对括号扫描而非正则：出现多个 face 时贪婪正则会吞掉后面的条目，懒惰正则又会在
+ * 图标表达式自带括号时提前截断。找不到返回 null。
+ * @param src - 编译产物内容。
+ * @param name - 要取的内建命令名。
+ * @returns 图标表达式源码（去掉首尾空白），未找到时为 null。
+ */
+function extractHostFaceIcon(src, name) {
+  const marker = 'hostFace("' + name + '", '
+  const start = src.indexOf(marker)
+  if (start < 0) return null
+  let depth = 0
+  for (let i = start + marker.length; i < src.length; i++) {
+    const ch = src[i]
+    if (ch === '(') depth++
+    else if (ch === ')') {
+      if (depth === 0) return src.slice(start + marker.length, i).trim()
+      depth--
+    }
+  }
+  return null
+}
+
+/**
  * 注入 /auto-plan 的菜单文案（`command` 命名空间），兼容上游两种识别机制：
  *   - 0.1.6 起（`HOST_FACES` 存在）：按**定义**识别——字典要补齐 label/description/token
  *     三组 zh/en，`BUILTINS` 要加 definitionId 映射，`HOST_FACES` 要加菜单面（含图标）；
@@ -137,10 +161,12 @@ function patchUiCommands(entry, src, log) {
   let additions
   if (newMechanism) {
     // Mirror the /plan menu face's own icon expression so a renamed primitives
-    // binding cannot desync this injection from the surrounding code. Greedy
-    // `.+` is confined to one line, so it captures the whole icon expression.
-    const face = /\t\t\thostFace\("plan", (.+)\),/.exec(src)
-    if (face === null) throw new Error(NAME + ': ' + display + ' has no hostFace("plan", ...) entry to mirror')
+    // binding cannot desync this injection from the surrounding code. Scanned
+    // with balanced parentheses rather than a regex: a greedy regex swallows
+    // the following faces if the map is ever emitted on one line, and a lazy
+    // one stops early on an icon expression that itself contains parens.
+    const icon = extractHostFaceIcon(src, 'plan')
+    if (icon === null) throw new Error(NAME + ': ' + display + ' has no hostFace("plan", ...) entry to mirror')
     // The zh dictionary is the key-set source of truth and en is checked
     // complete against it, so every key lands in both tables; token.* also
     // feeds the localized-spelling aliases, which iterate Object.keys(BUILTINS).
@@ -160,7 +186,7 @@ function patchUiCommands(entry, src, log) {
         '"auto-plan": "' + AUTO_PLAN_DEFINITION_ID + '"',
         '\n' + tab + '"auto-plan": "' + AUTO_PLAN_DEFINITION_ID + '",',
       ],
-      [face[0], 'hostFace("auto-plan"', '\n' + tab + 'hostFace("auto-plan", ' + face[1] + '),'],
+      [tab + 'hostFace("plan", ' + icon + '),', 'hostFace("auto-plan"', '\n' + tab + 'hostFace("auto-plan", ' + icon + '),'],
     )
   } else {
     additions = [
