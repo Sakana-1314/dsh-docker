@@ -101,7 +101,7 @@ docker build --build-arg DSH_REF=dsh-v0.1.0-rc.7 -t deepseek-harness:local .
 
 镜像通过 `scripts/auto-plan/patch-auto-plan.cjs` 为 `dsh-plan-mode` 注入 `/auto-plan` 命令：与 `/plan` 一样进入计划模式（`plan:policy` 引导、模型探索并制定计划），但当模型调用 `exit_plan_mode` 时**跳过用户评审确认卡片直接批准**，退出计划模式并继续执行计划——省去一次手动确认。`/auto-plan off` 与 `/plan off` 均可退出；auto 标记由会话日志折叠（`command/run` 记录），重启 / fork 后可恢复。普通 `/plan` 的行为完全不变（仍弹评审确认），在已激活计划会话中用 `/auto-plan` 或 `/plan` 可在两种模式间切换。
 
-命令描述跟随界面语言：上游浏览器端只翻译「名字在映射表里、且宿主描述与 en 字典逐字相同」的宿主命令（`ui-commands` 的 `HOST_DESCRIPTION_KEYS` + `command` 命名空间字典）。`/auto-plan` 是本仓库注入的命令，默认不在那张表里，因此中文界面下 `/` 菜单只会显示它的英文描述。补丁脚本为此同时给 `dsh-client-ui-commands` 的浏览器产物登记 `description.auto-plan`（zh/en 两份字典 + 映射），中文界面显示「进入或退出自动批准的计划模式」，英文界面与其余第三方命令行为不变；描述英文串在脚本里是单一常量，宿主侧注册值与浏览器端用于比对的字典值始终一致。该增强通过 `scripts/auto-plan/patch-auto-plan.cjs` 在构建时完成，无需额外配置。
+命令文案跟随界面语言：`/auto-plan` 是本仓库注入的命令，上游默认不认识它，因此 `/` 菜单里它只有宿主注册的英文描述。补丁脚本同时给 `dsh-client-ui-commands` 的浏览器产物登记它的菜单文案，中文界面显示「自动计划 / 进入或退出自动批准的计划模式」，英文界面显示 `Auto Plan / Enter or leave auto-approving plan mode`；其余第三方命令行为不变。上游 0.1.6 起把「内建命令」的识别方式从**比对描述文案**（`HOST_DESCRIPTION_KEYS`）改成**比对定义标识**（`BUILTINS` 的 `definitionId` + `HOST_FACES` 菜单面），所以脚本会按产物形态走两条注入路径：新版补 label / description / token 三组 zh/en 字典、`BUILTINS` 映射与 `HOST_FACES` 菜单面，旧版补 description 字典与 `[name, key]` 映射对。`/auto-plan` 与 `/plan` 由同一个包注册，因此宿主侧的 `definitionId` 用 `@deepseek-ai/dsh-plan-mode#auto-plan`（**必须**与 `/plan` 不同：新版按 `find` 首个匹配识别，共用 id 会让 `/auto-plan` 显示成「计划」）。该增强通过 `scripts/auto-plan/patch-auto-plan.cjs` 在构建时完成，无需额外配置。
 
 ### 侧边栏品牌名称轮播
 
