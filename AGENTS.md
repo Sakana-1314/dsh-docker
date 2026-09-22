@@ -39,8 +39,9 @@
 
 ## 5. 品牌资源（favicon）规范
 
-- **favicon 为固定红色 `#E60012`**：浏览器标签页 / PWA 图标（`/favicon.svg`）的鲸鱼标一律是红标，浅色与深色配色方案下都一样。上游 favicon 用 `<style>` 媒体查询区分配色（浅色黑 `fill="#000"`、深色白 `fill: #fff`），因此两条颜色都要改——只改 `<path>` 属性会让深色模式仍是白标。
-- **只改构建产物**：补丁对象是 `apps/web/dist/favicon.svg`（gitignored，由 `dsh web` 作为静态资源伺服），上游被 git 跟踪的源文件 `apps/web/public/favicon.svg` 不动；颜色常量写在 `scripts/red-favicon/patch-red-favicon.cjs` 里，不引入环境变量。改色值只需改该脚本的 `RED` 常量，并在 `docs/scripts.md` 与 `README.md` 同步。
+- **favicon 为固定红色 `#E60012`**：浏览器标签页 / PWA 图标（0.1.7 起是 `/favicon.svg` 供浅色 + `/favicon-dark.svg` 供深色，由 `index.html` 里两个带 `media` 的 `<link>` 选择）的鲸鱼标一律是红标，浅色与深色配色方案下都一样——**深色配色必须显式覆盖**，只改浅色那颗会让深色模式仍是白标。上游表达深色配色的方式有过两种布局，脚本两条路径都必须保留：0.1.7 起独立产物 `favicon-dark.svg` 的 `fill="#fff"`；0.1.6 及更早是 `favicon.svg` 内联 `<style>` 媒体查询里的 `fill: #fff`（CSS 优先级高于 `<path>` 表现属性）。
+- **只改构建产物**：补丁对象是 `apps/web/dist/favicon.svg` 与 `apps/web/dist/favicon-dark.svg`（gitignored，由 `dsh web` 作为静态资源伺服），上游被 git 跟踪的源文件 `apps/web/public/favicon*.svg` 不动；颜色常量写在 `scripts/red-favicon/patch-red-favicon.cjs` 里，不引入环境变量。改色值只需改该脚本的 `RED` 常量，并在 `docs/scripts.md` 与 `README.md` 同步。
+- **布局变化要可感知**：脚本先按产物识别布局（有 `favicon-dark.svg` 走新版、否则找内联 CSS 锚点），两种都对不上直接报错（构建失败）；收尾还要对**全部** favicon 产物做一次「红标就位 + 默认色零残留」复检，避免半打补丁或上游再改布局时静默留下白标。
 
 ## 6. 提交流程（必循，每次改动都按此执行）
 
@@ -55,5 +56,5 @@
 
 - **给 GUI 加一条手机端 CSS 定制**：确认断点 → 在 `scripts/mobile-ui/patch-mobile-ui.cjs` 的 `targets` 里加一条（隐藏类名用 `hideOnMobile`，结构性规则用 `appendCssSuffix`）→ 跑脚本 → 刷新 GUI 验证 → 幂等复检 → 更新 `docs/scripts.md` 的说明 + 本文件第 4 节（**不新建脚本**）。
 - **新增 / 改名 / 删除 hook 脚本**：保持单一职责与自包含（不引用其他脚本）；同步 `docs/scripts.md` 清单；构建时脚本还要改 `Dockerfile` 的顺序列表。
-- **换 favicon 颜色**：改 `scripts/red-favicon/patch-red-favicon.cjs` 的 `RED` 常量（浅色 `fill="#000"`、深色 `<style>` 里的 `fill: #fff` 两条锚点都要覆盖）→ 跑脚本 → 刷新 GUI 验证 → 幂等复检 → 同步 `docs/scripts.md` 与 `README.md` + 本文件第 5 节。
+- **换 favicon 颜色**：改 `scripts/red-favicon/patch-red-favicon.cjs` 的 `RED` 常量（浅色 `fill="#000"`、深色 `fill="#fff"` 或旧布局内联 CSS `fill: #fff;` 的锚点都要覆盖）→ 跑脚本 → 刷新 GUI 验证（浅色与深色两种配色方案都要看）→ 幂等复检 → 同步 `docs/scripts.md` 与 `README.md` + 本文件第 5 节。
 - **升级上游 dsh 版本**：定时轮询（`.github/workflows/build.yml`）发现上游新 `dsh-v*` 标签后，先由 `scripts/dsh-version/sync-version-file.sh` 把版本写进 `VERSION` 并提交推送，再构建镜像；手动触发用 `workflow_dispatch` 传版本（同样会先同步 `VERSION`）。若构建在补丁锚点处失败，按报错更新对应脚本后再构建。

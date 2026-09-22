@@ -109,7 +109,7 @@ docker build --build-arg DSH_REF=dsh-v0.1.0-rc.7 -t deepseek-harness:local .
 
 ### 红色 favicon
 
-镜像通过 `scripts/red-favicon/patch-red-favicon.cjs` 把 favicon（浏览器标签页 / PWA 图标，`/favicon.svg`）换成红色版：鲸鱼标由上游的浅色模式黑色（`fill="#000"`）/ 深色模式白色（`<style>` 里的 `fill: #fff`）统一改为固定红 `#E60012`，两种配色方案下都是红标。补丁只改 Web 构建产物 `apps/web/dist/favicon.svg`（dsh web 作为静态资源伺服），上游被 git 跟踪的源文件 `apps/web/public/favicon.svg` 不受影响；颜色写死在脚本里，无需环境变量。
+镜像通过 `scripts/red-favicon/patch-red-favicon.cjs` 把 favicon（浏览器标签页 / PWA 图标）换成红色版：鲸鱼标由上游的浅色模式黑色（`fill="#000"`）/ 深色模式白色统一改为固定红 `#E60012`，浅色与深色两种配色方案下都是红标。上游 0.1.7 起把深色配色拆成了独立文件：`/favicon.svg` 供浅色、`/favicon-dark.svg` 供深色，`index.html` 用两个带 `media` 的 `<link>` 引入；0.1.6 及更早则是单文件里 `<style>` 媒体查询的 `fill: #fff`。补丁两种布局都覆盖，且两种都对不上时报错终止构建（不会静默留下白标）。补丁只改 Web 构建产物 `apps/web/dist/favicon.svg` 与 `apps/web/dist/favicon-dark.svg`（dsh web 作为静态资源伺服），上游被 git 跟踪的源文件 `apps/web/public/favicon*.svg` 不受影响；颜色写死在脚本里，无需环境变量。
 
 ### 手机端 UI 优化
 
