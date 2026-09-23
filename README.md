@@ -106,6 +106,14 @@ docker build --build-arg DSH_REF=dsh-v0.1.0-rc.7 -t deepseek-harness:local .
 
 后两条共同构成一条规范：折叠后不占页面宽度。桌面端（≥1024px）行为与上游一致（56px rail）。所有隐藏类名与选择器都从各包自身 css map 解析（哈希无关），无需改上游源码。
 
+### 语音识别模型走国内镜像站
+
+镜像通过 `scripts/speech-model-mirror/patch-speech-model-mirror.cjs` 把本地语音识别（SenseVoice 转写）的模型下载地址从 HuggingFace 官方站换成国内可直连的 `https://hf-mirror.com`：转写模型（int8 / fp32）、`tokens.txt` 与 Silero VAD 三份 pinned 资源都改从镜像站取，不需要代理。
+
+- 下载地址在上游是 `modelOrigin` + 清单里的 pathname 拼出来的（`runtime/assets.json` 只锁路径、字节数与 sha256，其中的 origin 不参与下载），所以补丁改的是**编译产物里 `modelOrigin` 的默认值**：`packages/experimental/speech-to-text-sensevoice` 的 `lib/index.js`（宿主侧真正发起下载）与 `lib/worker.js`（私有 worker 的同一份 schema），构建时由 `pnpm build:lib` 产出，上游被 git 跟踪的 `src/config.ts` 与 `runtime/assets.json` 不动。
+- 上游的 `modelOrigin` 配置项保留原样：想换成别的 Hugging Face 兼容源（含私有镜像）时，在该 provider 的配置里显式指定即可，不必改镜像。
+- 镜像站提供的就是上游 pin 住的那几份文件：`tokens.txt` 与 `silero_vad.onnx` 的 sha256 与上游锁定值逐字节相同，两个 onnx 权重的字节数也一致，因此运行时的 sha256 校验照常通过。
+
 ### 启动时自动初始化 profiles 目录
 
 容器启动时会自动创建 `${DSH_HOME:-$HOME/.dsh}/profiles` 目录。这样即使把一个空的宿主机目录挂载到 `/root/.dsh`，首次启动也不会因为 profiles 目录不存在而提示错误；已有目录和其中的插件配置不会受到影响。

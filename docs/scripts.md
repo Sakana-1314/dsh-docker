@@ -22,6 +22,7 @@
 | `scripts/welcome-notice/patch-welcome-notice.cjs` | 默认跳过首次进入 GUI 的内测声明弹窗 | `dsh-client-modules`、`dsh-client-ui-settings-models` | `DSH_SHOW_WELCOME_NOTICE` |
 | `scripts/red-favicon/patch-red-favicon.cjs` | favicon（浏览器标签页 / PWA 图标）换成红色版：鲸鱼标由浅色模式的 `#000`、深色模式的 `#fff` 统一改为固定红 `#E60012`。深色配色兼容两种上游布局——0.1.7 起是独立产物 `favicon-dark.svg`（`fill="#fff"`），0.1.6 及更早是 `favicon.svg` 内联 `<style>` 媒体查询里的 `fill: #fff;`；两种都对不上就报错（只改 Web 构建产物，源文件 `apps/web/public/favicon*.svg` 不动） | `apps/web/dist/favicon.svg`、`apps/web/dist/favicon-dark.svg`（0.1.7 起） | 无 |
 | `scripts/mobile-ui/patch-mobile-ui.cjs` | 手机端 UI 优化，四条规则一个脚本：隐藏输入框的模型名与思考等级（< 560px）、隐藏会话头部的 session log 导出入口（< 560px）、折叠侧边栏不占页面宽度（< 1024px）、折叠侧边栏收起到左上角 36×36 角标（< 1024px） | `dsh-client-ui-model-selection`、`dsh-session-log-export`、`dsh-client-ui-layout`、`dsh-client-ui-sidebar` | 无 |
+| `scripts/speech-model-mirror/patch-speech-model-mirror.cjs` | 语音识别（本地 SenseVoice 转写）的模型下载地址由 HuggingFace 官方站换成国内可直连的镜像站 `https://hf-mirror.com`（转写模型 int8 / fp32、`tokens.txt`、Silero VAD 都走镜像站）。改的是编译产物里 `modelOrigin` 的**默认值**——下载地址 = `modelOrigin` + 清单 `runtime/assets.json` 里的 pathname；上游的 `modelOrigin` 配置项保留，仍可覆盖成任意 Hugging Face 兼容源 | `dsh-experimental-speech-to-text-sensevoice`（`lib/index.js`、`lib/worker.js`） | 无 |
 
 锚点跟随 `VERSION` 指向的上游版本：上游改了结构，脚本会立即报错终止（构建失败），按报错更新对应脚本的锚点即可。
 

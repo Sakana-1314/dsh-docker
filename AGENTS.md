@@ -57,4 +57,5 @@
 - **给 GUI 加一条手机端 CSS 定制**：确认断点 → 在 `scripts/mobile-ui/patch-mobile-ui.cjs` 的 `targets` 里加一条（隐藏类名用 `hideOnMobile`，结构性规则用 `appendCssSuffix`）→ 跑脚本 → 刷新 GUI 验证 → 幂等复检 → 更新 `docs/scripts.md` 的说明 + 本文件第 4 节（**不新建脚本**）。
 - **新增 / 改名 / 删除 hook 脚本**：保持单一职责与自包含（不引用其他脚本）；同步 `docs/scripts.md` 清单；构建时脚本还要改 `Dockerfile` 的顺序列表。
 - **换 favicon 颜色**：改 `scripts/red-favicon/patch-red-favicon.cjs` 的 `RED` 常量（浅色 `fill="#000"`、深色 `fill="#fff"` 或旧布局内联 CSS `fill: #fff;` 的锚点都要覆盖）→ 跑脚本 → 刷新 GUI 验证（浅色与深色两种配色方案都要看）→ 幂等复检 → 同步 `docs/scripts.md` 与 `README.md` + 本文件第 5 节。
+- **换语音识别模型镜像站**：改 `scripts/speech-model-mirror/patch-speech-model-mirror.cjs` 的 `MIRROR_ORIGIN` 常量（锚点是编译产物里 `modelOrigin` 的默认值：`lib/index.js` 与 `lib/worker.js` 各一处，下载地址 = `modelOrigin` + `runtime/assets.json` 的 pathname）→ 跑脚本 → 用产物里的默认值拼地址、比对该清单的字节数与 sha256 → 幂等复检 → 同步 `docs/scripts.md` 与 `README.md`。
 - **升级上游 dsh 版本**：定时轮询（`.github/workflows/build.yml`）发现上游新 `dsh-v*` 标签后，先由 `scripts/dsh-version/sync-version-file.sh` 把版本写进 `VERSION` 并提交推送，再构建镜像；手动触发用 `workflow_dispatch` 传版本（同样会先同步 `VERSION`）。若构建在补丁锚点处失败，按报错更新对应脚本后再构建。
