@@ -9,9 +9,9 @@
  *     0.1.5 起是「更多操作」菜单按钮 moreButton，更早是 sessionLogButton，两个键名都兼容；
  *  3. 折叠后的侧边栏不占页面宽度（视口 < 1024px，dsh-client-ui-layout）：折叠时把三列
  *     grid 强制成 0 / 1fr / 0（!important 压过组件内联样式）；
- *  4. 折叠后的侧边栏收起到左上角角标（视口 < 1024px，dsh-client-ui-sidebar）：36x36 固定
- *     角标 + 隐藏其余 rail 控件，展开图标直接显示（触屏没有 hover）。角标用
- *     `--dsh-fab-x/-y` 定位，容器与拖动逻辑见第 5 条；
+ *  4. 折叠后的侧边栏收起到左上角角标（视口 < 1024px，dsh-client-ui-sidebar）：44x44 品牌红
+ *     实心角标 + 隐藏其余 rail 控件（新建会话、全局面板列表即插件入口、工作区、页脚、设置），
+ *     展开图标直接显示（触屏没有 hover）。角标用 `--dsh-fab-x/-y` 定位，拖动逻辑见第 5 条；
  *  5. 角标可拖动（视口 < 1024px，dsh-client-ui-sidebar）：按住角标拖到任意位置，
  *     位置存 localStorage（`dsh-docker:mobile-fab`）并写成 `:root` 上的
  *     `--dsh-fab-x/-y`，所以重渲染/切会话都不丢；位移小于阈值仍是「点击展开」，
@@ -30,6 +30,14 @@ const path = require('node:path')
 const { spawnSync } = require('node:child_process')
 
 const NAME = 'patch-mobile-ui'
+// 角标（悬浮窗）用品牌红实心 + 白图标：上游给的默认态是「白底、无边框、无阴影」的
+// 28/36px 图标按钮，在会话内容上几乎看不见（见 README 的对比图说明）。这里换成醒目的
+// 品牌红 + 投影，鼠标悬停略提亮、按下轻微缩小，作为收起后唯一的展开入口足够显眼。
+const FAB_SIZE = 44
+const FAB_FILL = '#E60012'
+const FAB_FILL_HOVER = '#C50010'
+const FAB_ICON = '#FFFFFF'
+const FAB_SHADOW = '0 4px 14px rgba(0,0,0,.32),0 0 0 1px rgba(0,0,0,.04)'
 const root = path.resolve(process.argv[2] ?? process.env.DSH_SOURCE_DIR ?? '')
 if (!root || !fs.existsSync(path.join(root, 'package.json'))) {
   console.error(NAME + ': pass the built source checkout dir as argv[1] (or set DSH_SOURCE_DIR)')
@@ -44,6 +52,7 @@ const MARKER = {
   sidebarGrid: '/*dsh-docker:mobile-ui:sidebar-grid*/',
   sidebarFab: '/*dsh-docker:mobile-ui:sidebar-fab*/',
   fabDrag: '/*dsh-docker:mobile-ui:fab-drag*/',
+  fabDragEnd: '/*dsh-docker:mobile-ui:fab-drag:end*/',
 }
 
 // 在工作区里按包名定位唯一的包目录（packages/<tier>/<name> / apps/* / vendor/*）。
@@ -227,7 +236,6 @@ function cssRule(pkg, marker, build) {
 // 移动超过阈值才算拖动，并把紧随其后的那次 click 吞掉，轻点仍然是「展开侧边栏」。
 function fabDragSource(entities) {
   return [
-    '',
     MARKER.fabDrag,
     ';(() => {',
     `\tconst ROOT = ${JSON.stringify(entities.root)};`,
@@ -235,6 +243,7 @@ function fabDragSource(entities) {
     "\tconst STORE = 'dsh-docker:mobile-fab';",
     "\tconst MOBILE = '(max-width:1023px)';",
     '\tconst THRESHOLD = 6;',
+    `\tconst FALLBACK_SIZE = ${FAB_SIZE};`,
     '\tif (globalThis.__dshMobileFabDragInstalled) return;',
     '\tglobalThis.__dshMobileFabDragInstalled = true;',
     '\tconst rootStyle = document.documentElement.style;',
@@ -244,7 +253,8 @@ function fabDragSource(entities) {
     '\t\treturn el && isMobile() ? el : null;',
     '\t};',
     '\tconst clamp = (x, y) => {',
-    '\t\tconst size = 36;',
+    '\t\tconst el = document.querySelector(\'.\' + ROOT + \'.\' + COLLAPSED);',
+    '\t\tconst size = el && el.offsetWidth ? el.offsetWidth : FALLBACK_SIZE;',
     "\t\tconst maxX = Math.max(4, window.innerWidth - size - 4);",
     "\t\tconst maxY = Math.max(4, window.innerHeight - size - 4);",
     '\t\treturn { x: Math.min(Math.max(4, x), maxX), y: Math.min(Math.max(4, y), maxY) };',
@@ -308,6 +318,7 @@ function fabDragSource(entities) {
     '\t\tplace(p.x, p.y);',
     '\t});',
     '\t})();',
+    MARKER.fabDragEnd,
   ].join('\n')
 }
 
@@ -370,7 +381,7 @@ const targets = [
     ...cssRule(
       '@deepseek-ai/dsh-client-ui-sidebar',
       MARKER.sidebarFab,
-      (c) => `@media (max-width:1023px){.${c.get('root')}.${c.get('collapsed')}{position:fixed;left:var(--dsh-fab-x,8px);top:var(--dsh-fab-y,8px);width:36px;height:36px;padding:0;z-index:30;overflow:visible;border-radius:8px;touch-action:none}.${c.get('root')}.${c.get('collapsed')} .${c.get('logoRow')}{height:36px;margin:0;padding:0}.${c.get('root')}.${c.get('collapsed')} .${c.get('newSession')},.${c.get('root')}.${c.get('collapsed')} .${c.get('regionArea')},.${c.get('root')}.${c.get('collapsed')} .${c.get('footArea')}{display:none}.${c.get('root')}.${c.get('collapsed')} .${c.get('toggle')} .${c.get('panelIcon')}{display:inline}.${c.get('root')}.${c.get('collapsed')} .${c.get('toggle')} .${c.get('railMark')}{display:none}}`,
+      (c) => `@media (max-width:1023px){.${c.get('root')}.${c.get('collapsed')}{position:fixed;left:var(--dsh-fab-x,12px);top:var(--dsh-fab-y,12px);width:44px;height:44px;padding:0;z-index:60;overflow:visible;border-radius:12px;touch-action:none;background:${FAB_FILL};color:${FAB_ICON};border:0;box-shadow:${FAB_SHADOW};align-items:center;justify-content:center}.${c.get('root')}.${c.get('collapsed')}:hover{background:${FAB_FILL_HOVER}}.${c.get('root')}.${c.get('collapsed')}:active{transform:scale(.94)}.${c.get('root')}.${c.get('collapsed')} .${c.get('logoRow')}{height:auto;margin:0;padding:0;justify-content:center;align-items:center;overflow:visible}.${c.get('root')}.${c.get('collapsed')} .${c.get('newSession')},.${c.get('root')}.${c.get('collapsed')} .${c.get('panelList')},.${c.get('root')}.${c.get('collapsed')} .${c.get('regionArea')},.${c.get('root')}.${c.get('collapsed')} .${c.get('footArea')},.${c.get('root')}.${c.get('collapsed')} .${c.get('settingsArea')}{display:none}.${c.get('root')}.${c.get('collapsed')} .${c.get('toggle')}{width:100%;height:100%;border-radius:12px;color:inherit}.${c.get('root')}.${c.get('collapsed')} .${c.get('toggle')}:hover{background:transparent}.${c.get('root')}.${c.get('collapsed')} .${c.get('toggle')} .${c.get('panelIcon')}{display:inline;width:22px;height:22px}.${c.get('root')}.${c.get('collapsed')} .${c.get('toggle')} .${c.get('railMark')}{display:none}}`,
     ),
   },
   {
@@ -379,10 +390,7 @@ const targets = [
     pkg: '@deepseek-ai/dsh-client-ui-sidebar',
     file: 'lib/client.js',
     custom(entry, src, log) {
-      if (src.includes(MARKER.fabDrag)) {
-        log(`already applied in ${path.relative(root, entry)}`)
-        return src
-      }
+      const display = path.relative(root, entry)
       const { start, end } = cssLiteral(src, '@deepseek-ai/dsh-client-ui-sidebar')
       const map = cssMapFor(src, src.slice(start, end), '@deepseek-ai/dsh-client-ui-sidebar')
       const entities = { root: map.entries.get('root'), collapsed: map.entries.get('collapsed') }
@@ -391,9 +399,26 @@ const targets = [
           throw new Error(`${NAME}: @deepseek-ai/dsh-client-ui-sidebar has no css class "${key}" (map ${map.name})`)
         }
       }
-      const sourceMap = src.indexOf('//# sourceMappingURL=')
       const injected = fabDragSource(entities)
-      return sourceMap < 0 ? src + injected : src.slice(0, sourceMap) + injected + '\n' + src.slice(sourceMap)
+      // 已注入过就按 marker 整块替换（角标尺寸/阈值等实现细节改了，产物也要跟着更新），
+      // 而不是简单跳过；首次则插在 sourceMappingURL 之前。替换范围含「前导换行 → 块尾」，
+      // 保证重复运行收敛到同一个字节序列（幂等）。
+      const sourceMap = src.indexOf('//# sourceMappingURL=')
+      const at = src.indexOf(MARKER.fabDrag)
+      if (at >= 0) {
+        const lead = src.lastIndexOf('\n', at) >= 0 ? src.lastIndexOf('\n', at) : at
+        // 结束 marker 是后加的：历史产物只有起始 marker，其块一直延伸到 sourceMappingURL
+        // （或文件末尾），按同样范围替换即可升级。
+        const stop = src.indexOf(MARKER.fabDragEnd, at)
+        const tail = stop >= 0 ? stop + MARKER.fabDragEnd.length : (sourceMap >= 0 ? sourceMap : src.length)
+        const next = src.slice(0, lead) + '\n' + injected + src.slice(tail)
+        if (next === src) {
+          log(`already applied in ${display}`)
+          return src
+        }
+        return next
+      }
+      return sourceMap < 0 ? src + '\n' + injected : src.slice(0, sourceMap) + injected + '\n' + src.slice(sourceMap)
     },
   },
 ]
@@ -402,9 +427,10 @@ for (const { pkg, file, replacements, custom } of targets) {
   const dir = findPackageDir(pkg)
   const entry = path.resolve(dir, file ?? entryFile(dir, pkg))
   const display = path.relative(root, entry)
-  let src = fs.readFileSync(entry, 'utf8')
-  src = custom === void 0 ? applyReplacements(display, src, replacements) : custom(entry, src, log)
-  fs.writeFileSync(entry, src)
+  const before = fs.readFileSync(entry, 'utf8')
+  const after = custom === void 0 ? applyReplacements(display, before, replacements) : custom(entry, before, log)
+  if (after === before) continue // 无变化：custom() 已按 marker 报过 already applied
+  fs.writeFileSync(entry, after)
 
   // 打完补丁的产物必须仍能通过语法检查。
   const check = spawnSync(process.execPath, ['--check', entry], { stdio: 'inherit' })
