@@ -84,28 +84,12 @@ docker build --build-arg DSH_REF=dsh-v0.1.0-rc.7 -t deepseek-harness:local .
 | `DSH_TRUSTED_HOSTS` | 信任的访问地址（空格/逗号分隔）：局域网 IP、域名、反向代理地址。`/api` 与插件路由（`/sidebar/*`）都会放行 | 无（容器自身的局域网 IP 自动受信） |
 | `DSH_DISABLE_TRUST_FENCE` | 设为 `1` 彻底关闭信任栅栏**与浏览器会话（token/cookie）鉴权**，同时作用于 `/api`、已安装插件的路由（如 `/sidebar/*`）以及 0.1.3 起新增的会话认证——关闭后远程浏览器访问 `/api` 与首页不再要求携带 `?token=` 换取 cookie（不再 401），并解锁远程浏览器访问 settings（模型 / 凭证设置页，默认仅限 `localhost` 可用，远程显示「加载提供方目录失败」）；无鉴权，仅在你自己的反代 / 鉴权后使用 | 无 |
 | `DSH_SHOW_WELCOME_NOTICE` | 设为 `1` 恢复首次进入 GUI 时的内测声明弹窗；默认（不设置）已通过构建时补丁跳过该弹窗 | 无 |
-| `DSH_BRAND_ROTATION` | 侧边栏左上角品牌名称轮播的文案列表，用 `|` 分隔，如 `DeepSeek Harness\|探索未至之境` | `DeepSeek Harness\|探索未至之境` |
-| `DSH_BRAND_ROTATION_MS` | 品牌名称轮播切换间隔（毫秒） | `4000` |
-
-### 任意模型 / 任意供应商都可设置思考等级（推理等级）
-
-镜像内置了对 dsh 的思考等级（模型选择器里的「推理等级」）增强：任何模型都会暴露思考等级选项，不再要求模型供应商声明推理能力。
-
-- **手写声明（自定义 OpenAI 兼容网关等）或目录中未声明推理能力的模型**：显示通用等级梯子 `Off / Medium / High / XHigh / Max`，**默认 High**（无 "Default" 选项），选择后按原样发送给供应商（如 `reasoning_effort` 等 wire 参数）。
-- **目录中已声明推理能力的模型**（如 DeepSeek 官方、OpenAI 等）：仍只显示其真实支持的等级，行为不变。
-- **已明确标注不支持推理的目录模型**：不显示思考等级选项（避免把不支持的参数发给模型）。
-
-该增强通过 `scripts/universal-thinking/patch-universal-thinking.cjs` 在构建时注入 dsh 的 LLM 核心与 pi-ai 适配器，无需额外配置。
 
 ### `/auto-plan` 命令：计划退出自动批准
 
 镜像通过 `scripts/auto-plan/patch-auto-plan.cjs` 为 `dsh-plan-mode` 注入 `/auto-plan` 命令：与 `/plan` 一样进入计划模式（`plan:policy` 引导、模型探索并制定计划），但当模型调用 `exit_plan_mode` 时**跳过用户评审确认卡片直接批准**，退出计划模式并继续执行计划——省去一次手动确认。`/auto-plan off` 与 `/plan off` 均可退出；auto 标记由会话日志折叠（`command/run` 记录），重启 / fork 后可恢复。普通 `/plan` 的行为完全不变（仍弹评审确认），在已激活计划会话中用 `/auto-plan` 或 `/plan` 可在两种模式间切换。
 
 命令文案跟随界面语言：`/auto-plan` 是本仓库注入的命令，上游默认不认识它，因此 `/` 菜单里它只有宿主注册的英文描述。补丁脚本同时给 `dsh-client-ui-commands` 的浏览器产物登记它的菜单文案，中文界面显示「自动计划 / 进入或退出自动批准的计划模式」，英文界面显示 `Auto Plan / Enter or leave auto-approving plan mode`；其余第三方命令行为不变。上游 0.1.6 起把「内建命令」的识别方式从**比对描述文案**（`HOST_DESCRIPTION_KEYS`）改成**比对定义标识**（`BUILTINS` 的 `definitionId` + `HOST_FACES` 菜单面），所以脚本会按产物形态走两条注入路径：新版补 label / description / token 三组 zh/en 字典、`BUILTINS` 映射与 `HOST_FACES` 菜单面，旧版补 description 字典与 `[name, key]` 映射对。`/auto-plan` 与 `/plan` 由同一个包注册，因此宿主侧的 `definitionId` 用 `@deepseek-ai/dsh-plan-mode#auto-plan`（**必须**与 `/plan` 不同：新版按 `find` 首个匹配识别，共用 id 会让 `/auto-plan` 显示成「计划」）。该增强通过 `scripts/auto-plan/patch-auto-plan.cjs` 在构建时完成，无需额外配置。
-
-### 侧边栏品牌名称轮播
-
-镜像通过 `scripts/brand-rotation/patch-brand-rotation.cjs` 把左上角 logo 右侧的品牌名从固定字标改为文本，在 `DeepSeek Harness` 与 `探索未至之境` 之间轮播（默认每 4 秒切换，带淡入淡出）。文案与间隔可用 `DSH_BRAND_ROTATION`（`|` 分隔）/ `DSH_BRAND_ROTATION_MS` 环境变量调整；official 与通用（非 official）构建 profile 两条渲染路径都已覆盖，渲染在浏览器端完成，改环境变量后刷新页面即生效。
 
 ### 红色 favicon
 
