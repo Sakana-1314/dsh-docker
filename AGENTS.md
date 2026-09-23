@@ -32,10 +32,13 @@
 本仓库对 dsh 手机端（手机 / 窄视口）UI 的定制，全部放在**一个脚本** `scripts/mobile-ui/patch-mobile-ui.cjs` 里（手机端优化视为一个功能，按规则增删条目，不拆新脚本），通过在构建时注入 CSS 媒体查询实现（类名从各包自身 css map 解析，哈希无关）。既有规范：
 
 - **侧边栏折叠后收到左上角，不占据页面宽度**：移动端（视口 < 1024px，对应上游 `SIDEBAR_AUTO_COLLAPSE`）侧边栏折叠后，不得以 56px 全高竖栏占据页面左侧一条宽度；应**收起到左上角的角标按钮**（36×36，圆角，图标为展开面板图标），中心内容占满整页宽度。桌面端（≥1024px）行为与上游一致（56px rail）。实现是同脚本的两条规则：`dsh-client-ui-layout`（折叠时 grid 强制 `0 / 1fr / 0`，`!important` 覆盖内联样式）与 `dsh-client-ui-sidebar`（折叠 rail 变固定角标、隐藏其余 rail 控件）。
+- **角标必须可点开、可拖动**：角标是收起后唯一的展开入口，必须真的点得到——`position:fixed` + `z-index:30` 让它脱离 0 宽列的裁剪并浮在中心列之上。定位一律走 `:root` 上的 `--dsh-fab-x/-y`（默认 8px/8px）：位置由同脚本注入 `dsh-client-ui-sidebar` client bundle 的拖动逻辑维护（文档级 `pointerdown` 委托 + 6px 移动阈值，小于阈值仍是点击展开，超过阈值才算拖动并吞掉随后的 click），存 `localStorage['dsh-docker:mobile-fab']`，并在视口内限幅。
+- **类名必须按「所属 css 串」解析**：一个 bundle 可能打包多个 CSS module（`ui-sidebar` 里 `HeaderLeadingControls` 与 `SidebarRoot` 各一份），只按「类名出现在目标 css 串里」判定 map 归属；归属不唯一 / 键缺失直接报错。**取错 map 会生成 `.undefined` 选择器让规则静默失效**（曾导致手机上角标不存在、侧边栏点不开）。
+- **注入规则要能识别与替换**：每条注入规则带 `/*dsh-docker:mobile-ui:<name>*/` marker，重跑按 marker 原地替换（内容收敛到当前实现），并清理历史实现留下的 `.undefined` 规则，因此从旧坏产物重建能自愈。
 - **手机端隐藏模型名称与思考等级**：避免与读写策略按钮重叠（`dsh-client-ui-model-selection`）。
 - **手机端隐藏 session log 导出入口**（`dsh-session-log-export`）：0.1.5-rc.1 起上游把它从独立下载按钮改成会话头部「更多操作」菜单，脚本用 `anyOf` 别名同时兼容 `moreButton` 与 `sessionLogButton` 两个 css 键名。
 
-新增移动端 UI 定制时：断点优先与上游布局逻辑对齐（如 1024px 折叠断点）；隐藏类名用 `hideOnMobile`（键名会随上游改名时传 `{ anyOf: true }` 别名），结构性规则用 `appendCssSuffix`；在 `mobile-ui` 脚本里加一条规则、更新 `docs/scripts.md` 的说明，并在此节补一条规范。
+新增移动端 UI 定制时：断点优先与上游布局逻辑对齐（如 1024px 折叠断点）；隐藏类名用 `hideOnMobile`（键名会随上游改名时传 `{ anyOf: true }` 别名），结构性规则用 `cssRule`（自带 marker，重跑原地替换）；在 `mobile-ui` 脚本里加一条规则、更新 `docs/scripts.md` 的说明，并在此节补一条规范。
 
 ## 5. 品牌资源（favicon）规范
 
@@ -54,7 +57,7 @@
 
 ## 7. 常见任务速查
 
-- **给 GUI 加一条手机端 CSS 定制**：确认断点 → 在 `scripts/mobile-ui/patch-mobile-ui.cjs` 的 `targets` 里加一条（隐藏类名用 `hideOnMobile`，结构性规则用 `appendCssSuffix`）→ 跑脚本 → 刷新 GUI 验证 → 幂等复检 → 更新 `docs/scripts.md` 的说明 + 本文件第 4 节（**不新建脚本**）。
+- **给 GUI 加一条手机端 CSS 定制**：确认断点 → 在 `scripts/mobile-ui/patch-mobile-ui.cjs` 的 `targets` 里加一条（隐藏类名用 `hideOnMobile`，结构性规则用 `cssRule` + 自己的 marker；需要运行时行为就注入 client bundle 里，参考角标拖动那段）→ 跑脚本 → 刷新 GUI 验证（含拖动/点击等交互）→ 幂等复检 → 更新 `docs/scripts.md` 的说明 + 本文件第 4 节（**不新建脚本**）。
 - **新增 / 改名 / 删除 hook 脚本**：保持单一职责与自包含（不引用其他脚本）；同步 `docs/scripts.md` 清单；构建时脚本还要改 `Dockerfile` 的顺序列表。
 - **换 favicon 颜色**：改 `scripts/red-favicon/patch-red-favicon.cjs` 的 `RED` 常量（浅色 `fill="#000"`、深色 `fill="#fff"` 或旧布局内联 CSS `fill: #fff;` 的锚点都要覆盖）→ 跑脚本 → 刷新 GUI 验证（浅色与深色两种配色方案都要看）→ 幂等复检 → 同步 `docs/scripts.md` 与 `README.md` + 本文件第 5 节。
 - **换语音识别模型镜像站**：改 `scripts/speech-model-mirror/patch-speech-model-mirror.cjs` 的 `MIRROR_ORIGIN` 常量（锚点是编译产物里 `modelOrigin` 的默认值：`lib/index.js` 与 `lib/worker.js` 各一处，下载地址 = `modelOrigin` + `runtime/assets.json` 的 pathname）→ 跑脚本 → 用产物里的默认值拼地址、比对该清单的字节数与 sha256 → 幂等复检 → 同步 `docs/scripts.md` 与 `README.md`。
