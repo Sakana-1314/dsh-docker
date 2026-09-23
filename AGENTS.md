@@ -31,10 +31,11 @@
 
 本仓库对 dsh 手机端（手机 / 窄视口）UI 的定制，全部放在**一个脚本** `scripts/mobile-ui/patch-mobile-ui.cjs` 里（手机端优化视为一个功能，按规则增删条目，不拆新脚本），通过在构建时注入 CSS 媒体查询实现（类名从各包自身 css map 解析，哈希无关）。既有规范：
 
-- **侧边栏折叠后收到左上角，不占据页面宽度**：移动端（视口 < 1024px，对应上游 `SIDEBAR_AUTO_COLLAPSE`）侧边栏折叠后，不得以 56px 全高竖栏占据页面左侧一条宽度；应**收起到左上角的角标按钮**（36×36，圆角，图标为展开面板图标），中心内容占满整页宽度。桌面端（≥1024px）行为与上游一致（56px rail）。实现是同脚本的两条规则：`dsh-client-ui-layout`（折叠时 grid 强制 `0 / 1fr / 0`，`!important` 覆盖内联样式）与 `dsh-client-ui-sidebar`（折叠 rail 变固定角标、隐藏其余 rail 控件）。
-- **角标必须可点开、可拖动**：角标是收起后唯一的展开入口，必须真的点得到——`position:fixed` + `z-index:30` 让它脱离 0 宽列的裁剪并浮在中心列之上。定位一律走 `:root` 上的 `--dsh-fab-x/-y`（默认 8px/8px）：位置由同脚本注入 `dsh-client-ui-sidebar` client bundle 的拖动逻辑维护（文档级 `pointerdown` 委托 + 6px 移动阈值，小于阈值仍是点击展开，超过阈值才算拖动并吞掉随后的 click），存 `localStorage['dsh-docker:mobile-fab']`，并在视口内限幅。
+- **侧边栏折叠后收到左上角，不占据页面宽度**：移动端（视口 < 1024px，对应上游 `SIDEBAR_AUTO_COLLAPSE`）侧边栏折叠后，不得以 56px 全高竖栏占据页面左侧一条宽度；应**收起到左上角的角标按钮**（44×44，圆角，图标为展开面板图标），中心内容占满整页宽度。桌面端（≥1024px）行为与上游一致（56px rail）。实现是同脚本的两条规则：`dsh-client-ui-layout`（折叠时 grid 强制 `0 / 1fr / 0`，`!important` 覆盖内联样式）与 `dsh-client-ui-sidebar`（折叠 rail 变固定角标、隐藏其余 rail 控件）。
+- **角标必须可点开、可拖动，而且足够显眼**：角标是收起后唯一的展开入口，必须真的点得到——`position:fixed` + `z-index:60` 让它脱离 0 宽列的裁剪并浮在中心列之上；外观固定为 **44×44 品牌红 `#E60012` 实心块 + 白图标 + 投影**（上游默认的图标按钮是白底、无边框、无阴影，叠在会话内容上几乎看不见，**不得回退成那个样子**），悬停略提亮、按下轻微缩小。定位一律走 `:root` 上的 `--dsh-fab-x/-y`（默认 12px/12px）：位置由同脚本注入 `dsh-client-ui-sidebar` client bundle 的拖动逻辑维护（文档级 `pointerdown` 委托 + 6px 移动阈值，小于阈值仍是点击展开，超过阈值才算拖动并吞掉随后的 click），存 `localStorage['dsh-docker:mobile-fab']`，并按角标**实测尺寸**在视口内限幅。
+- **收起态只留角标**：折叠后除角标外不得再露出别的控件——新建会话、**全局面板列表（`panelList`，即插件入口）**、工作区、页脚、设置区全部隐藏；展开后它们必须恢复（隐藏只写在 `max-width:1023px` + 折叠态选择器里）。
 - **类名必须按「所属 css 串」解析**：一个 bundle 可能打包多个 CSS module（`ui-sidebar` 里 `HeaderLeadingControls` 与 `SidebarRoot` 各一份），只按「类名出现在目标 css 串里」判定 map 归属；归属不唯一 / 键缺失直接报错。**取错 map 会生成 `.undefined` 选择器让规则静默失效**（曾导致手机上角标不存在、侧边栏点不开）。
-- **注入规则要能识别与替换**：每条注入规则带 `/*dsh-docker:mobile-ui:<name>*/` marker，重跑按 marker 原地替换（内容收敛到当前实现），并清理历史实现留下的 `.undefined` 规则，因此从旧坏产物重建能自愈。
+- **注入内容要能识别与替换**：每条注入的 CSS 规则与注入的 JS 段都带 `/*dsh-docker:mobile-ui:<name>*/` … `:end` marker，重跑按 marker 原地替换（改成 44px、换配色这类实现变更才能进到已打过补丁的产物里），并清理历史实现留下的 `.undefined` 规则，因此从旧坏产物重建能自愈且幂等。
 - **手机端隐藏模型名称与思考等级**：避免与读写策略按钮重叠（`dsh-client-ui-model-selection`）。
 - **手机端隐藏 session log 导出入口**（`dsh-session-log-export`）：0.1.5-rc.1 起上游把它从独立下载按钮改成会话头部「更多操作」菜单，脚本用 `anyOf` 别名同时兼容 `moreButton` 与 `sessionLogButton` 两个 css 键名。
 
