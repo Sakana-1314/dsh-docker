@@ -65,6 +65,7 @@ RUN set -e; \
       /tmp/dsh-scripts/welcome-notice/patch-welcome-notice.cjs \
       /tmp/dsh-scripts/red-favicon/patch-red-favicon.cjs \
       /tmp/dsh-scripts/mobile-ui/patch-mobile-ui.cjs \
+      /tmp/dsh-scripts/speech-model-mirror/patch-speech-model-mirror.cjs \
     ; do echo "==> ${script}"; node "$script" /src; done; \
     rm -rf /tmp/dsh-scripts
 
