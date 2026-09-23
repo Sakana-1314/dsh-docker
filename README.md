@@ -112,7 +112,7 @@ docker build --build-arg DSH_REF=dsh-v0.1.0-rc.7 -t deepseek-harness:local .
 镜像通过 `scripts/speech-model-mirror/patch-speech-model-mirror.cjs` 让本地语音识别（SenseVoice 转写）的模型**优先**从国内可直连的 `https://hf-mirror.com` 下载：转写模型（int8 / fp32）、`tokens.txt` 与 Silero VAD 三份 pinned 资源都先取镜像站，不需要代理。
 
 - 下载地址在上游是 `origin` + 清单里的 pathname 拼出来的（`runtime/assets.json` 只锁路径、字节数与 sha256，其中的 origin 不参与下载），所以补丁改的是**编译产物里 origin 的默认值**：`packages/experimental/speech-to-text-sensevoice` 的 `lib/index.js`（宿主侧真正发起下载）与 `lib/worker.js`（私有 worker 的同一份 schema），构建时由 `pnpm build:lib` 产出，上游被 git 跟踪的 `src/config.ts` 与 `runtime/assets.json` 不动。
-- 上游 0.1.7-rc.1 起自己引入了多源回退（`modelOrigins` 默认 `["https://huggingface.co", "https://hf-mirror.com"]`，运行时并行 HEAD 探测、优先用先响应的源，其余作为回退）：补丁改为把镜像**挪到默认数组首位**、官方站保留为回退，国内直连时不必先等官方站探测超时；0.1.7-alpha.2 及更早的单源版本则直接把默认 origin 换成镜像站。
+- 上游 0.1.7-rc.1 起自己引入了多源回退（`modelOrigins` 默认 `["https://huggingface.co", "https://hf-mirror.com"]`，运行时并行 HEAD 探测、优先用先响应的源，其余作为回退）：补丁改为把镜像**挪到默认数组首位**、官方站保留为容灾回退。下载是**按顺序尝试**，探测无论成功还是超时都不会把镜像排到官方站之后，因此国内部署必定优先命中镜像站；0.1.7-alpha.2 及更早的单源版本则直接把默认 origin 换成镜像站。
 - 上游的 `modelOrigin` 配置项保留原样：想换成别的 Hugging Face 兼容源（含私有镜像）时，在该 provider 的配置里显式指定即可，不必改镜像。
 - 镜像站提供的就是上游 pin 住的那几份文件：`tokens.txt` 与 `silero_vad.onnx` 的 sha256 与上游锁定值逐字节相同，两个 onnx 权重的字节数也一致，因此运行时的 sha256 校验照常通过。
 
