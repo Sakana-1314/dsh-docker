@@ -58,13 +58,11 @@ RUN pnpm run build:lib && pnpm run build:web
 COPY scripts/ /tmp/dsh-scripts/
 RUN set -e; \
     for script in \
-      /tmp/dsh-scripts/universal-thinking/patch-universal-thinking.cjs \
       /tmp/dsh-scripts/llm-retry/patch-llm-retry.cjs \
       /tmp/dsh-scripts/default-directory/patch-default-directory.cjs \
       /tmp/dsh-scripts/trust-fence/patch-trust-fence.cjs \
       /tmp/dsh-scripts/auto-plan/patch-auto-plan.cjs \
       /tmp/dsh-scripts/welcome-notice/patch-welcome-notice.cjs \
-      /tmp/dsh-scripts/brand-rotation/patch-brand-rotation.cjs \
       /tmp/dsh-scripts/red-favicon/patch-red-favicon.cjs \
       /tmp/dsh-scripts/mobile-ui/patch-mobile-ui.cjs \
     ; do echo "==> ${script}"; node "$script" /src; done; \
